@@ -5,17 +5,26 @@
 /**
  * 解析快捷录入文本
  *
- * 支持的格式（每行）：
- *   商品名 数量 [单位]
+ * 支持两种格式，自动检测：
+ *
+ * 格式一（每行独立）：
  *   客户名 商品名 数量 [单位]
- *
- * 客户名通过在 customers 列表中匹配来识别
- *
+ *   商品名 数量 [单位]
  * 示例：
  *   张三 后腿卷  10件
  *   三号    8
- *   李四 乌鸡卷  3件
- *   精品五花 5kg
+ *
+ * 格式二（客户名单独一行，下面列举商品）：
+ *   客户名
+ *   商品名 数量 [单位]
+ *   商品名 数量 [单位]
+ * 示例：
+ *   冬盼
+ *   后腿卷  10件
+ *   三号    8件
+ *   乌鸡卷  3件
+ *
+ * 自动检测规则：如果第一行不含数字 → 格式二；否则格式一
  *
  * @param {string} text - 原始多行文本
  * @param {Customer[]} customers - 已有客户列表（用于匹配客户名）
@@ -28,68 +37,134 @@ export function parseQuickEntry(text, customers = []) {
   // 支持的单位关键词
   const unitPattern = '(?:件|个|箱|包|斤|公斤|kg|g|两|吨|盒|袋|桶|瓶|把|条|块|片|卷|只|双|套|台|辆|支|根|颗|粒|对|打|盘|筐|笼|提|板)';
 
+  // 先收集所有非空行
+  const nonEmpty = [];
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i];
-    const trimmed = rawLine.trim();
+    const trimmed = lines[i].trim();
+    if (trimmed) nonEmpty.push({ lineIndex: i, trimmed });
+  }
 
-    // 跳过空行
-    if (!trimmed) continue;
+  if (nonEmpty.length === 0) return results;
 
-    // 正则：所有文本 + 数量 + 可选单位
+  // 自动检测格式：第一行不含数字 → 分组格式
+  const firstIsCustomer = !/\d/.test(nonEmpty[0].trimmed);
+
+  if (firstIsCustomer) {
+    // ============ 格式二：客户名分组 ============
+    let currentCustomer = null;
+    let currentCustomerName = '';
+
     const fullPattern = new RegExp(
-      `^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*${unitPattern}?\\s*$`,
+      `^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*(${unitPattern})?\\s*$`,
       'i'
     );
 
-    const match = trimmed.match(fullPattern);
+    for (const line of nonEmpty) {
+      const { lineIndex, trimmed } = line;
+      const match = trimmed.match(fullPattern);
 
-    if (match) {
-      const namePart = match[1].trim();
-      const quantity = parseFloat(match[2]);
-      const unit = match[3] || null;
+      if (match) {
+        // 有数字 → 商品行
+        const productName = match[1].trim();
+        const quantity = parseFloat(match[2]);
+        const unit = match[3] || null;
 
-      // 尝试拆分客户名和商品名
-      const { customer, customerName, productName } = splitCustomerAndProduct(namePart, customers);
+        results.push({
+          rawCustomer: currentCustomerName,
+          customer: currentCustomer,
+          rawName: productName,
+          quantity,
+          unit,
+          lineIndex,
+          rawLine: trimmed,
+          error: null
+        });
+      } else {
+        // 松散匹配：名称 + 数字（无单位）
+        const looseMatch = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*$/);
+        if (looseMatch) {
+          const productName = looseMatch[1].trim();
+          const quantity = parseFloat(looseMatch[2]);
 
-      results.push({
-        rawCustomer: customerName,
-        customer: customer,       // 匹配到的客户对象，未匹配为 null
-        rawName: productName,
-        quantity,
-        unit,
-        lineIndex: i,
-        rawLine: trimmed,
-        error: null
-      });
-    } else {
-      // 宽松匹配：只要 名称 + 数字
-      const looseMatch = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*$/);
-      if (looseMatch) {
-        const namePart = looseMatch[1].trim();
-        const quantity = parseFloat(looseMatch[2]);
+          results.push({
+            rawCustomer: currentCustomerName,
+            customer: currentCustomer,
+            rawName: productName,
+            quantity,
+            unit: null,
+            lineIndex,
+            rawLine: trimmed,
+            error: null
+          });
+        } else {
+          // 无数字 → 客户名行
+          const customerName = trimmed;
+          const matchedCustomer = customers.find(c => c.name === customerName);
+          currentCustomer = matchedCustomer || null;
+          currentCustomerName = customerName;
+        }
+      }
+    }
+  } else {
+    // ============ 格式一：每行独立（原有逻辑） ============
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+
+      const fullPattern = new RegExp(
+        `^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*${unitPattern}?\\s*$`,
+        'i'
+      );
+
+      const match = trimmed.match(fullPattern);
+
+      if (match) {
+        const namePart = match[1].trim();
+        const quantity = parseFloat(match[2]);
+        const unit = match[3] || null;
+
         const { customer, customerName, productName } = splitCustomerAndProduct(namePart, customers);
 
         results.push({
           rawCustomer: customerName,
-          customer: customer,
+          customer,
           rawName: productName,
           quantity,
-          unit: null,
+          unit,
           lineIndex: i,
           rawLine: trimmed,
           error: null
         });
       } else {
-        results.push({
-          rawCustomer: '',
-          customer: null,
-          rawName: trimmed,
-          quantity: null,
-          unit: null,
-          lineIndex: i,
-          rawLine: trimmed,
-          error: '无法识别格式，请使用：商品名 数量 [单位]'
-        });
+        const looseMatch = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*$/);
+        if (looseMatch) {
+          const namePart = looseMatch[1].trim();
+          const quantity = parseFloat(looseMatch[2]);
+          const { customer, customerName, productName } = splitCustomerAndProduct(namePart, customers);
+
+          results.push({
+            rawCustomer: customerName,
+            customer,
+            rawName: productName,
+            quantity,
+            unit: null,
+            lineIndex: i,
+            rawLine: trimmed,
+            error: null
+          });
+        } else {
+          results.push({
+            rawCustomer: '',
+            customer: null,
+            rawName: trimmed,
+            quantity: null,
+            unit: null,
+            lineIndex: i,
+            rawLine: trimmed,
+            error: '无法识别格式，请使用：商品名 数量 [单位]'
+          });
+        }
       }
     }
   }
