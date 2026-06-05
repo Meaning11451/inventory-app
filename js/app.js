@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => { initApp(); });
 
 async function initApp() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
   // 标签切换
