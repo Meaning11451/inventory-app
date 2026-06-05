@@ -177,6 +177,14 @@ export async function fetchInboundRecords({ from, to, customerId, productId } = 
   return data;
 }
 
+export async function deleteInboundRecord(id) {
+  const { error } = await getClient()
+    .from('inbound_records')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ==================== 出库 ====================
 
 export async function createOutbound({ product_id, customer_id = null, customer_name = '', quantity, unit_price = null, note = '', recorded_at = null }) {
@@ -231,6 +239,14 @@ export async function fetchOutboundRecords({ from, to, customerId, productId } =
   const { data, error } = await query.limit(200);
   if (error) throw error;
   return data;
+}
+
+export async function deleteOutboundRecord(id) {
+  const { error } = await getClient()
+    .from('outbound_records')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
 }
 
 // ==================== 实时订阅 ====================

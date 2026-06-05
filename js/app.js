@@ -829,13 +829,37 @@ async function renderRecords() {
                   <span style="font-weight:500;">${escapeHtml(pn)}</span>
                   <span style="font-size:0.7rem;color:var(--color-text-muted);margin-left:8px;">${r.unit_price ? '¥'+formatNum(r.unit_price)+' · ' : ''}${escapeHtml(r.note||'')}</span>
                 </div>
-                <div style="font-weight:700;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
+                <div style="font-weight:700;text-align:right;min-width:50px;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
                   ${isIn?'+':'-'}${formatNum(r.quantity)} ${escapeHtml(unit)}
                 </div>
+                <button class="btn btn-sm btn-danger record-del" data-id="${r.id}" data-type="${type}" title="删除记录" style="opacity:0.4;font-size:0.7rem;padding:3px 6px;">✕</button>
               </div>
             </div>`;
         }).join('')}
       `).join('');
+
+    // 删除记录按钮
+    container.querySelectorAll('.record-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const recordId = btn.dataset.id;
+        const recordType = btn.dataset.type;
+        if (!confirm(`确定删除这条${recordType === 'inbound' ? '入库' : '出库'}记录？\n库存数量会自动更新。`)) return;
+        try {
+          if (recordType === 'inbound') {
+            await DB.deleteInboundRecord(recordId);
+          } else {
+            await DB.deleteOutboundRecord(recordId);
+          }
+          showToast('已删除 ✅', 'success');
+          await renderRecords();
+          await renderDashboard();
+        } catch (err) {
+          showToast('删除失败: ' + err.message, 'error');
+        }
+      });
+    });
+
   } catch (err) { document.getElementById('recordList').innerHTML = '<div class="empty-state">⚠️<p>加载失败</p></div>'; }
 }
 
