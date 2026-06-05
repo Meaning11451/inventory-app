@@ -122,16 +122,13 @@ function bindEvents() {
   document.getElementById('customerExcelFile').addEventListener('change', handleCustomerExcelImport);
   document.getElementById('customerExcelSubmit').addEventListener('click', handleCustomerExcelSubmit);
 
-  // 可编辑预览中的删除按钮（事件委托）
-  document.getElementById('inboundParsePreview').addEventListener('click', (e) => {
-    if (e.target.classList.contains('ep-remove')) {
-      e.target.closest('tr').remove();
-    }
-  });
-  document.getElementById('outboundParsePreview').addEventListener('click', (e) => {
-    if (e.target.classList.contains('ep-remove')) {
-      e.target.closest('tr').remove();
-    }
+  // 可编辑预览中的删除按钮（事件委托，所有预览容器）
+  ['inboundParsePreview','outboundParsePreview','inboundExcelPreview','outboundExcelPreview'].forEach(id => {
+    document.getElementById(id).addEventListener('click', (e) => {
+      if (e.target.classList.contains('ep-remove')) {
+        e.target.closest('tr').remove();
+      }
+    });
   });
 
   // 记录筛选
