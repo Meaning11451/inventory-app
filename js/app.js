@@ -40,11 +40,17 @@ async function initApp() {
   // 实时订阅：数据库变化时自动刷新当前页面
   DB.subscribeStockChanges(() => {
     const tab = getState('currentTab');
-    // 不在用户正在输入时刷新
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
     if (tab === 'dashboard') renderDashboard();
     else if (tab === 'stock') renderStock();
     else if (tab === 'records') renderRecords();
+  });
+
+  // 切回页面/标签时自动刷新（补充实时订阅）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      refreshCurrentTab();
+    }
   });
 
   await switchTab('dashboard');
