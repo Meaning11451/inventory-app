@@ -952,11 +952,14 @@ async function autoCreateCustomers(parsedItems) {
     const name = item.rawCustomer;
     if (!name || existingNames.has(name) || newMap[name]) continue;
 
+    // 尝试从解析结果中提取手机号
+    const phone = item.customer?._phone || '';
+
     try {
-      const nc = await DB.createCustomer({ name, phone: '', note: '' });
+      const nc = await DB.createCustomer({ name, phone, note: '' });
       newMap[name] = { id: nc.id, name: nc.name };
       existingNames.add(name);
-      showToast('已创建新客户: ' + name, 'info');
+      showToast('已创建新客户: ' + name + (phone ? ' 📱' + phone : ''), 'info');
     } catch (err) {
       console.error('自动创建客户失败:', name, err);
     }

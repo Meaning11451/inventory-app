@@ -46,63 +46,75 @@ export function parseQuickEntry(text, customers = []) {
 
   if (nonEmpty.length === 0) return results;
 
-  // 自动检测格式：第一行不含数字 → 分组格式
-  const firstIsCustomer = !/\d/.test(nonEmpty[0].trimmed);
+  // 自动检测格式：第一行不含数字 或 是"客户名+手机号" → 分组格式
+  const firstTrimmed = nonEmpty[0].trimmed;
+  const firstIsCustomer = !/\d/.test(firstTrimmed) || !!checkCustomerWithPhone(firstTrimmed);
 
   if (firstIsCustomer) {
-    // ============ 格式二：客户名分组 ============
+    // ============ 格式二：客户名分组（客户名单独一行，下面列商品） ============
     let currentCustomer = null;
     let currentCustomerName = '';
 
-    const fullPattern = new RegExp(
-      `^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*(${unitPattern})?\\s*$`,
-      'i'
-    );
-
     for (const line of nonEmpty) {
       const { lineIndex, trimmed } = line;
-      const match = trimmed.match(fullPattern);
 
-      if (match) {
-        // 有数字 → 商品行
-        const productName = match[1].trim();
-        const quantity = parseFloat(match[2]);
-        const unit = match[3] || null;
+      // 先检查是否包含数字
+      const hasDigit = /\d/.test(trimmed);
 
-        results.push({
-          rawCustomer: currentCustomerName,
-          customer: currentCustomer,
-          rawName: productName,
-          quantity,
-          unit,
-          lineIndex,
-          rawLine: trimmed,
-          error: null
-        });
-      } else {
-        // 松散匹配：名称 + 数字（无单位）
-        const looseMatch = trimmed.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*$/);
-        if (looseMatch) {
-          const productName = looseMatch[1].trim();
-          const quantity = parseFloat(looseMatch[2]);
+      if (hasDigit) {
+        // 检查是否是"客户名 + 手机号"格式（手机号 ≥ 7位，无小数点）
+        const phoneMatch = checkCustomerWithPhone(trimmed);
+        if (phoneMatch) {
+          // → 客户信息行
+          currentCustomerName = phoneMatch.name;
+          const matchedCustomer = customers.find(c => c.name === currentCustomerName);
+          currentCustomer = matchedCustomer || null;
+          // 把手机号暂存到 customer 对象（用于后续自动创建客户时填入）
+          if (!currentCustomer) {
+            currentCustomer = { _phone: phoneMatch.phone, _isNew: true };
+          }
+          continue;
+        }
 
+        // ---- 商品行：名称 + 数量 [+ 单位] ----
+        const parsed = parseProductLine(trimmed, unitPattern);
+
+        if (parsed) {
+          // 排除离谱的大数字（> 100000 很可能是误识别）
+          if (parsed.quantity > 100000) {
+            // 数字太大 → 可能是误识别的客户行，当客户名处理
+            currentCustomerName = trimmed;
+            const matchedCustomer = customers.find(c => c.name === trimmed);
+            currentCustomer = matchedCustomer || null;
+            continue;
+          }
           results.push({
             rawCustomer: currentCustomerName,
             customer: currentCustomer,
-            rawName: productName,
-            quantity,
-            unit: null,
+            rawName: parsed.name,
+            quantity: parsed.quantity,
+            unit: parsed.unit,
             lineIndex,
             rawLine: trimmed,
             error: null
           });
         } else {
-          // 无数字 → 客户名行
-          const customerName = trimmed;
-          const matchedCustomer = customers.find(c => c.name === customerName);
-          currentCustomer = matchedCustomer || null;
-          currentCustomerName = customerName;
+          results.push({
+            rawCustomer: currentCustomerName,
+            customer: currentCustomer,
+            rawName: trimmed,
+            quantity: null,
+            unit: null,
+            lineIndex,
+            rawLine: trimmed,
+            error: '无法识别数量和单位'
+          });
         }
+      } else {
+        // ---- 无数字 → 客户名行 ----
+        currentCustomerName = trimmed;
+        const matchedCustomer = customers.find(c => c.name === currentCustomerName);
+        currentCustomer = matchedCustomer || null;
       }
     }
   } else {
@@ -170,6 +182,80 @@ export function parseQuickEntry(text, customers = []) {
   }
 
   return results;
+}
+
+/**
+ * 检测是否是"客户名 + 手机号"格式
+ * 手机号特征：≥ 7 位连续数字，无小数点
+ * 示例：
+ *   "张三13654798567"   → { name: "张三", phone: "13654798567" }
+ *   "张三 13654798567"  → { name: "张三", phone: "13654798567" }
+ *   "张三 136 5479"     → { name: "张三", phone: "1365479" }
+ *   "后腿卷 10件"       → null（数字太短）
+ *
+ * @param {string} line
+ * @returns {{ name: string, phone: string } | null}
+ */
+function checkCustomerWithPhone(line) {
+  // 提取所有连续数字段
+  const digitGroups = line.match(/\d+/g);
+  if (!digitGroups || digitGroups.length === 0) return null;
+
+  // 把所有数字段拼接起来看总长度
+  const allDigits = digitGroups.join('');
+  // 总位数 ≥ 7 且没有小数点 → 判定为手机号
+  if (allDigits.length < 7 || line.includes('.')) return null;
+
+  // 提取名字：数字之前的所有文本（去除末尾空格）
+  const firstDigitIdx = line.search(/\d/);
+  const namePart = line.substring(0, firstDigitIdx).trim();
+
+  if (!namePart) return null; // 必须有名字
+
+  return { name: namePart, phone: allDigits };
+}
+
+/**
+ * 从产品行解析：名称、数量、单位
+ * 支持格式：
+ *   "后腿卷 10件"   → { name: "后腿卷", quantity: 10, unit: "件" }
+ *   "三号  8"       → { name: "三号", quantity: 8, unit: null }
+ *   "五花肉5斤"    → { name: "五花肉", quantity: 5, unit: "斤" }
+ *   "后腿卷10"      → { name: "后腿卷", quantity: 10, unit: null }
+ *
+ * @param {string} line - 单行文本
+ * @param {string} unitPattern - 单位正则片段
+ * @returns {{ name: string, quantity: number, unit: string|null } | null}
+ */
+function parseProductLine(line, unitPattern) {
+  // 匹配：名称 + 空格 + 数字 + 可选空格 + 可选单位
+  const fullRe = new RegExp(
+    `^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*(${unitPattern})?\\s*$`,
+    'i'
+  );
+  const m1 = line.match(fullRe);
+  if (m1) {
+    return { name: m1[1].trim(), quantity: parseFloat(m1[2]), unit: m1[3] || null };
+  }
+
+  // 匹配：名称(无空格)数字 + 单位（如 "五花肉5斤"）
+  const noSpaceRe = new RegExp(
+    `^(.+?)(\\d+(?:\\.\\d+)?)\\s*(${unitPattern})?\\s*$`,
+    'i'
+  );
+  const m2 = line.match(noSpaceRe);
+  if (m2) {
+    return { name: m2[1].trim(), quantity: parseFloat(m2[2]), unit: m2[3] || null };
+  }
+
+  // 匹配：名称 + 空格 + 纯数字（无单位）
+  const simpleRe = /^(.+?)\s+(\d+(?:\.\d+)?)\s*$/;
+  const m3 = line.match(simpleRe);
+  if (m3) {
+    return { name: m3[1].trim(), quantity: parseFloat(m3[2]), unit: null };
+  }
+
+  return null;
 }
 
 /**
