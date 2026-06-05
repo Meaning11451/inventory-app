@@ -304,7 +304,8 @@ async function renderStock() {
           <div style="display:flex;gap:4px;margin-left:8px;">
             <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📥</button>
             <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📤</button>
-            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" title="编辑/改名">✏️</button>
+            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" title="编辑">✏️</button>
+            <button class="btn btn-sm btn-danger stock-del" data-id="${item.id}" data-name="${escapeHtml(item.name)}" title="删除">🗑️</button>
           </div>
         </div>
       `;
@@ -336,6 +337,21 @@ async function renderStock() {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         openEditModal(btn.dataset.id);
+      });
+    });
+    // 删除按钮
+    container.querySelectorAll('.stock-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`确定删除「${btn.dataset.name}」？\n（有入库/出库记录的商品无法删除）`)) return;
+        try {
+          await DB.deleteProduct(btn.dataset.id);
+          showToast('已删除「' + btn.dataset.name + '」', 'success');
+          await renderStock();
+          await renderDashboard();
+        } catch (err) {
+          showToast('删除失败：' + (err.message || '该商品有出入库记录，无法删除'), 'error');
+        }
       });
     });
 
