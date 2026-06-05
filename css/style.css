@@ -690,6 +690,53 @@ body {
 .parse-preview .row-new { border-left: 3px solid var(--color-warning); }
 .parse-preview .row-error { border-left: 3px solid var(--color-danger); background: #fff5f5; }
 
+/* === 可编辑预览 === */
+.editable-preview {
+  margin-top: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+.editable-preview table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.editable-preview th {
+  background: var(--color-bg);
+  padding: 8px 6px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.editable-preview td { padding: 4px 4px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.editable-preview tr:last-child td { border-bottom: none; }
+
+.ep-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+.ep-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(108,92,231,0.12); }
+
+.ep-remove {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+.ep-remove:hover { opacity: 1; }
+
+.editable-preview .row-matched { border-left: 3px solid var(--color-success); }
+.editable-preview .row-new { border-left: 3px solid var(--color-warning); }
+.editable-preview .row-error { border-left: 3px solid var(--color-danger); background: #fff5f5; }
+
 /* === Badges === */
 .badge {
   display: inline-block;

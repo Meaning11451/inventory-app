@@ -2,7 +2,7 @@
 // Service Worker v5 - 智能缓存 + 手机号客户识别修复
 // ============================================
 
-const APP_VERSION = 'v6';
+const APP_VERSION = 'v7';
 const CACHE_NAME = `inventory-${APP_VERSION}`;
 
 // ==================== Install ====================

@@ -122,6 +122,18 @@ function bindEvents() {
   document.getElementById('customerExcelFile').addEventListener('change', handleCustomerExcelImport);
   document.getElementById('customerExcelSubmit').addEventListener('click', handleCustomerExcelSubmit);
 
+  // 可编辑预览中的删除按钮（事件委托）
+  document.getElementById('inboundParsePreview').addEventListener('click', (e) => {
+    if (e.target.classList.contains('ep-remove')) {
+      e.target.closest('tr').remove();
+    }
+  });
+  document.getElementById('outboundParsePreview').addEventListener('click', (e) => {
+    if (e.target.classList.contains('ep-remove')) {
+      e.target.closest('tr').remove();
+    }
+  });
+
   // 记录筛选
   document.getElementById('recordTypeFilter').addEventListener('change', renderRecords);
   document.getElementById('recordFromDate').addEventListener('change', renderRecords);
@@ -316,18 +328,17 @@ async function renderStock() {
     });
 
     // 点击编辑
-    // 点击名字区域 → 编辑商品（含库存修正）
+    // 点击名字区域或编辑按钮 → 编辑商品（含库存修正）
     container.querySelectorAll('.stock-edit-trigger').forEach(el => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        showProductEditWithStock(el.dataset.productId);
+        openEditModal(el.dataset.productId);
       });
     });
-    // 编辑按钮
     container.querySelectorAll('.stock-edit').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        showProductEditWithStock(btn.dataset.id);
+        openEditModal(btn.dataset.id);
       });
     });
 
@@ -539,6 +550,31 @@ async function handleOutboundExcelSubmit() {
   await renderDashboard();
 }
 
+/**
+ * 从可编辑预览表格收集数据
+ */
+function collectEditablePreview(containerId) {
+  const container = document.getElementById(containerId);
+  const rows = container.querySelectorAll('tbody tr');
+  const items = [];
+  rows.forEach(row => {
+    const custInput = row.querySelector('.ep-customer');
+    const nameInput = row.querySelector('.ep-name');
+    const qtyInput = row.querySelector('.ep-qty');
+    const unitInput = row.querySelector('.ep-unit');
+
+    const rawCustomer = custInput ? custInput.value.trim() : '';
+    const rawName = (nameInput?.value || '').trim();
+    const quantity = parseFloat(qtyInput?.value || '0');
+    const unit = (unitInput?.value || '').trim();
+
+    if (rawName && quantity > 0) {
+      items.push({ rawCustomer, rawName, quantity, unit });
+    }
+  });
+  return items;
+}
+
 // ==================== Excel 通用 ====================
 
 async function handleExcelFile(e, fileId, previewId, submitId) {
@@ -570,85 +606,160 @@ async function readExcelFile(file) {
 }
 
 function renderExcelPreview(containerId, resolved) {
-  document.getElementById(containerId).innerHTML = `
-    <div class="parse-preview"><table>
-      <thead><tr><th>客户/商品</th><th>数量</th><th>单位</th><th>状态</th></tr></thead>
-      <tbody>${resolved.map(item => {
-        const b = item.parsed.error ? ['格式错误','danger','row-error'] : item.needCreate ? ['待新建','warning','row-new'] : ['已匹配','success','row-matched'];
-        return `<tr class="${b[2]}"><td>${item.parsed.rawCustomer ? '👤'+escapeHtml(item.parsed.rawCustomer)+' ' : ''}${escapeHtml(item.parsed.rawName)}</td><td>${formatNum(item.parsed.quantity)}</td><td>${escapeHtml(item.parsed.unit||item.suggestedUnit)}</td><td><span class="badge badge-${b[1]}">${b[0]}</span></td></tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
+  // Excel 也使用可编辑预览
+  renderParsePreview(containerId, resolved);
 }
 
 async function submitExcelData(fileId, opType) {
-  const json = document.getElementById(fileId).dataset.resolved;
-  if (!json) return;
-  const resolved = JSON.parse(json);
+  // 确定预览区 ID
+  const previewId = fileId === 'inboundExcelFile' ? 'inboundExcelPreview' : 'outboundExcelPreview';
+  const editedItems = collectEditablePreview(previewId);
+
+  if (editedItems.length === 0) {
+    showToast('没有有效数据', 'warning');
+    return;
+  }
+
+  // 复用快捷提交逻辑
   const products = await loadProducts();
+  const customers = await loadCustomers();
   const newMap = {};
-  for (const item of resolved) {
-    if (item.needCreate) {
-      try { const np = await DB.createProduct({ name: item.parsed.rawName, unit: item.suggestedUnit }); newMap[item.parsed.rawName] = np.id; }
-      catch (err) { showToast('创建商品失败: ' + item.parsed.rawName, 'error'); return; }
+
+  for (const item of editedItems) {
+    let product = products.find(p => p.name === item.rawName);
+    if (!product) {
+      product = products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase());
+    }
+    if (!product) {
+      product = products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
+    }
+    if (!product) {
+      try {
+        const np = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
+        newMap[item.rawName] = np.id;
+        products.push(np);
+      } catch (err) { showToast('创建商品失败: ' + item.rawName, 'error'); return; }
+    }
+    if (item.rawCustomer) {
+      const existingCust = customers.find(c => c.name === item.rawCustomer);
+      if (!existingCust) {
+        try {
+          const nc = await DB.createCustomer({ name: item.rawCustomer, phone: '', note: '' });
+          customers.push(nc);
+        } catch (err) { /* ignore */ }
+      }
     }
   }
 
-  // 自动创建不存在的客户
-  const customerMap = await autoCreateCustomers(resolved.map(r => r.parsed));
-
-  const items = resolved.map(item => {
-    const custEntry = customerMap[item.parsed.rawCustomer];
+  const items = editedItems.map(item => {
+    const product = products.find(p => p.name === item.rawName) ||
+                    products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase()) ||
+                    products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
+    const customer = item.rawCustomer ? customers.find(c => c.name === item.rawCustomer) : null;
     return {
-      product_id: item.product?.id || newMap[item.parsed.rawName],
-      customer_id: custEntry?.id || null,
-      customer_name: custEntry?.name || item.parsed.rawCustomer || '',
-      quantity: item.parsed.quantity,
-      unit_price: item.unitPrice || null,
-      note: '',
+      product_id: product?.id || newMap[item.rawName],
+      customer_id: customer?.id || null,
+      customer_name: item.rawCustomer || '',
+      quantity: item.quantity,
+      unit_price: null, note: '',
       recorded_at: today()
     };
   });
+
   try {
     await DB[opType](items);
     showToast(`导入成功 ✅ 共 ${items.length} 条`, 'success');
+    document.getElementById(previewId).innerHTML = '';
+    document.getElementById(fileId === 'inboundExcelFile' ? 'inboundExcelSubmit' : 'outboundExcelSubmit').style.display = 'none';
+    document.getElementById(fileId).value = '';
+    await renderDashboard();
   } catch (err) { showToast('导入失败: ' + err.message, 'error'); }
 }
 
 // ==================== 快捷提交通用 ====================
 
 async function submitQuickData(textId, opType) {
-  const json = document.getElementById(textId).dataset.resolved;
-  if (!json) return;
-  const resolved = JSON.parse(json);
-  const products = await loadProducts();
-  const newMap = {};
+  // 确定预览区 ID
+  const previewId = textId === 'inboundQuickText' ? 'inboundParsePreview' : 'outboundParsePreview';
+  const editedItems = collectEditablePreview(previewId);
 
-  // 先自动创建不存在的商品
-  for (const item of resolved) {
-    if (item.needCreate) {
-      try { const np = await DB.createProduct({ name: item.parsed.rawName, unit: item.suggestedUnit }); newMap[item.parsed.rawName] = np.id; showToast('已创建新商品: ' + item.parsed.rawName, 'info'); }
-      catch (err) { showToast('创建商品失败: ' + item.parsed.rawName, 'error'); return; }
+  if (editedItems.length === 0) {
+    showToast('没有有效数据（商品名和数量必填）', 'warning');
+    return;
+  }
+
+  const products = await loadProducts();
+  const customers = await loadCustomers();
+  const newMap = {};
+  const customerMap = {};
+
+  // 预处理：匹配已有商品和客户
+  for (const item of editedItems) {
+    // 匹配商品
+    let product = products.find(p => p.name === item.rawName);
+    if (!product) {
+      product = products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase());
+    }
+    if (!product) {
+      product = products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
+    }
+    if (!product) {
+      try {
+        const np = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
+        newMap[item.rawName] = np.id;
+        showToast('已创建新商品: ' + item.rawName, 'info');
+        products.push(np);
+      } catch (err) {
+        showToast('创建商品失败: ' + item.rawName, 'error');
+        return;
+      }
+    }
+
+    // 匹配客户
+    if (item.rawCustomer) {
+      let customer = customers.find(c => c.name === item.rawCustomer);
+      if (!customer) {
+        try {
+          const nc = await DB.createCustomer({ name: item.rawCustomer, phone: '', note: '' });
+          customerMap[item.rawCustomer] = { id: nc.id, name: nc.name };
+          customers.push(nc);
+          showToast('已创建新客户: ' + item.rawCustomer, 'info');
+        } catch (err) {
+          showToast('创建客户失败: ' + item.rawCustomer, 'error');
+          return;
+        }
+      } else if (!customerMap[item.rawCustomer]) {
+        customerMap[item.rawCustomer] = { id: customer.id, name: customer.name };
+      }
     }
   }
 
-  // 自动创建不存在的客户
-  const customerMap = await autoCreateCustomers(resolved.map(r => r.parsed));
-
-  const items = resolved.map(item => {
-    const custEntry = customerMap[item.parsed.rawCustomer];
+  const items = editedItems.map(item => {
+    const product = products.find(p => p.name === item.rawName) ||
+                    products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase()) ||
+                    products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
+    const custEntry = item.rawCustomer ? customerMap[item.rawCustomer] : null;
     return {
-      product_id: item.product?.id || newMap[item.parsed.rawName],
+      product_id: product?.id || newMap[item.rawName],
       customer_id: custEntry?.id || null,
-      customer_name: custEntry?.name || item.parsed.rawCustomer || '',
-      quantity: item.parsed.quantity,
+      customer_name: custEntry?.name || item.rawCustomer || '',
+      quantity: item.quantity,
       unit_price: null, note: '',
       recorded_at: today()
     };
   });
+
   try {
     await DB[opType](items);
     showToast(`批量操作成功 ✅ 共 ${items.length} 条`, 'success');
-  } catch (err) { showToast('操作失败: ' + err.message, 'error'); }
+    // 清空
+    document.getElementById(textId).value = '';
+    document.getElementById(previewId).innerHTML = '';
+    document.getElementById(textId === 'inboundQuickText' ? 'inboundQuickSubmit' : 'outboundQuickSubmit').style.display = 'none';
+    await renderDashboard();
+  } catch (err) {
+    showToast('操作失败: ' + err.message, 'error');
+  }
 }
 
 // ==================== 📋 记录 ====================
@@ -761,7 +872,7 @@ function showProductModal(product = null) {
   document.getElementById('productModalName').focus();
 }
 
-async function showProductEditWithStock(productId) {
+async function openEditModal(productId) {
   const products = getState('products');
   const p = products.find(pr => pr.id === productId);
   if (!p) return;
@@ -994,13 +1105,24 @@ async function handleCustomerSave() {
 // ==================== 解析预览 ====================
 
 function renderParsePreview(containerId, resolved) {
+  // 可编辑预览：每行都是输入框，可手动修改
+  const hasCustomer = resolved.some(r => r.parsed.rawCustomer);
   document.getElementById(containerId).innerHTML = `
-    <div class="parse-preview"><table>
-      <thead><tr><th>商品</th><th>数量</th><th>单位</th><th>状态</th></tr></thead>
-      <tbody>${resolved.map(item => {
+    <div class="editable-preview"><table>
+      <thead><tr>
+        ${hasCustomer ? '<th>客户</th>' : ''}
+        <th>商品</th><th>数量</th><th>单位</th><th>状态</th><th></th>
+      </tr></thead>
+      <tbody>${resolved.map((item, idx) => {
         const b = item.parsed.error ? ['格式错误','danger','row-error'] : item.needCreate ? ['待新建','warning','row-new'] : ['已匹配','success','row-matched'];
-        const cust = item.parsed.rawCustomer ? `<span style="color:var(--color-primary);font-weight:500;">👤 ${escapeHtml(item.parsed.rawCustomer)}</span> ` : '';
-        return `<tr class="${b[2]}"><td>${cust}${escapeHtml(item.parsed.rawName)}</td><td>${formatNum(item.parsed.quantity)}</td><td>${escapeHtml(item.parsed.unit||(item.product?.unit)||'?')}</td><td><span class="badge badge-${b[1]}">${b[0]}</span></td></tr>`;
+        return `<tr class="${b[2]}" data-idx="${idx}">
+          ${hasCustomer ? `<td><input class="ep-input ep-customer" value="${escapeHtml(item.parsed.rawCustomer||'')}" placeholder="客户"></td>` : ''}
+          <td><input class="ep-input ep-name" value="${escapeHtml(item.parsed.rawName||'')}" placeholder="商品名"></td>
+          <td style="width:70px;"><input class="ep-input ep-qty" type="number" value="${item.parsed.quantity||''}" placeholder="数量" step="0.01" min="0.01" style="text-align:center;"></td>
+          <td style="width:60px;"><input class="ep-input ep-unit" value="${escapeHtml(item.parsed.unit||item.suggestedUnit||'件')}" placeholder="单位" style="text-align:center;"></td>
+          <td><span class="badge badge-${b[1]}">${b[0]}</span></td>
+          <td><button class="btn btn-sm btn-danger ep-remove" data-idx="${idx}" title="移除">✕</button></td>
+        </tr>`;
       }).join('')}</tbody>
     </table></div>`;
 }
