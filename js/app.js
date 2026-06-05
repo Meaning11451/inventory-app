@@ -37,6 +37,16 @@ async function initApp() {
   const pendingCount = await getPendingCount();
   setState('pendingSyncCount', pendingCount);
 
+  // 实时订阅：数据库变化时自动刷新当前页面
+  DB.subscribeStockChanges(() => {
+    const tab = getState('currentTab');
+    // 不在用户正在输入时刷新
+    if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+    if (tab === 'dashboard') renderDashboard();
+    else if (tab === 'stock') renderStock();
+    else if (tab === 'records') renderRecords();
+  });
+
   await switchTab('dashboard');
 }
 
