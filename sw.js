@@ -1,8 +1,8 @@
 // ============================================
-// Service Worker v5 - 智能缓存 + 手机号客户识别修复
+// Service Worker v8 - JS/CSS Network-First
 // ============================================
 
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 const CACHE_NAME = `inventory-${APP_VERSION}`;
 
 // ==================== Install ====================
@@ -42,7 +42,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // JS / CSS / 图片 / 字体：Cache-First
+  // JS / CSS：Network-First（确保拿到最新代码）
+  if (request.destination === 'script' || request.destination === 'style' || url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // 图片 / 字体 / 其他静态资源：Cache-First
   event.respondWith(cacheFirst(request));
 });
 
