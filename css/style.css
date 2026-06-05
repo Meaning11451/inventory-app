@@ -251,6 +251,8 @@ body {
 .stock-card:active .stock-card-emoji { transform: scale(1.1); }
 
 .stock-card-info { flex: 1; min-width: 0; }
+.stock-edit-trigger { cursor: pointer; border-radius: 6px; transition: background 0.2s; }
+.stock-edit-trigger:hover { background: rgba(108,92,231,0.05); }
 
 .stock-card-name {
   font-weight: 600;

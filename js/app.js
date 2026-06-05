@@ -282,9 +282,9 @@ async function renderStock() {
     container.innerHTML = stockData.map(item => {
       const qtyClass = item.stock_qty > 0 ? 'qty-positive' : item.stock_qty < 0 ? 'qty-negative' : 'qty-zero';
       return `
-        <div class="card stock-card" style="cursor:pointer;" data-product-id="${item.id}">
+        <div class="card stock-card" data-product-id="${item.id}">
           <div class="stock-card-emoji">${getEmoji(item.name)}</div>
-          <div class="stock-card-info">
+          <div class="stock-card-info stock-edit-trigger" data-product-id="${item.id}">
             <div class="stock-card-name">${escapeHtml(item.name)}</div>
             ${item.spec ? `<div class="stock-card-spec">${escapeHtml(item.spec)}</div>` : ''}
           </div>
@@ -295,6 +295,7 @@ async function renderStock() {
           <div style="display:flex;gap:4px;margin-left:8px;">
             <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📥</button>
             <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📤</button>
+            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" title="编辑/改名">✏️</button>
           </div>
         </div>
       `;
@@ -315,11 +316,18 @@ async function renderStock() {
     });
 
     // 点击编辑
-    container.querySelectorAll('.stock-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const products = getState('products');
-        const p = products.find(pr => pr.id === card.dataset.productId);
-        if (p) showProductModal(p);
+    // 点击名字区域 → 编辑商品（含库存修正）
+    container.querySelectorAll('.stock-edit-trigger').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showProductEditWithStock(el.dataset.productId);
+      });
+    });
+    // 编辑按钮
+    container.querySelectorAll('.stock-edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showProductEditWithStock(btn.dataset.id);
       });
     });
 
@@ -746,6 +754,40 @@ function showProductModal(product = null) {
   document.getElementById('productModalSpec').value = product?.spec || '';
   document.getElementById('productModalUnit').value = product?.unit || '件';
   document.getElementById('productModalOverlay').dataset.editId = product?.id || '';
+  // 隐藏库存修正区域
+  const stockSection = document.getElementById('productModalStockSection');
+  if (stockSection) stockSection.style.display = 'none';
+  document.getElementById('productModalOverlay').style.display = 'flex';
+  document.getElementById('productModalName').focus();
+}
+
+async function showProductEditWithStock(productId) {
+  const products = getState('products');
+  const p = products.find(pr => pr.id === productId);
+  if (!p) return;
+
+  document.getElementById('productModalTitle').textContent = '编辑商品';
+  document.getElementById('productModalName').value = p.name || '';
+  document.getElementById('productModalSpec').value = p.spec || '';
+  document.getElementById('productModalUnit').value = p.unit || '件';
+  document.getElementById('productModalOverlay').dataset.editId = p.id;
+
+  // 显示库存修正区域
+  const stockSection = document.getElementById('productModalStockSection');
+  if (stockSection) {
+    stockSection.style.display = 'block';
+    try {
+      const stock = await DB.fetchProductStock(productId);
+      const currentQty = stock ? formatNum(stock.stock_qty) : '0';
+      document.getElementById('productModalStockQty').textContent = currentQty;
+      document.getElementById('productModalStockUnit').textContent = p.unit || '件';
+      document.getElementById('productModalAdjustQty').value = '';
+      document.getElementById('productModalAdjustNote').value = '';
+    } catch (err) {
+      stockSection.style.display = 'none';
+    }
+  }
+
   document.getElementById('productModalOverlay').style.display = 'flex';
   document.getElementById('productModalName').focus();
 }
@@ -756,10 +798,48 @@ async function handleProductSave() {
   const name = document.getElementById('productModalName').value.trim();
   if (!name) { showToast('请输入商品名称', 'warning'); return; }
   const editId = document.getElementById('productModalOverlay').dataset.editId;
+  const spec = document.getElementById('productModalSpec').value.trim();
+  const unit = document.getElementById('productModalUnit').value.trim() || '件';
+
   try {
+    // 保存商品信息
     editId
-      ? await DB.updateProduct(editId, { name, spec: document.getElementById('productModalSpec').value.trim(), unit: document.getElementById('productModalUnit').value.trim() || '件' })
-      : await DB.createProduct({ name, spec: document.getElementById('productModalSpec').value.trim(), unit: document.getElementById('productModalUnit').value.trim() || '件' });
+      ? await DB.updateProduct(editId, { name, spec, unit })
+      : await DB.createProduct({ name, spec, unit });
+
+    // 库存修正（仅编辑时可用）
+    const adjustInput = document.getElementById('productModalAdjustQty');
+    if (editId && adjustInput && adjustInput.value !== '') {
+      const targetQty = parseFloat(adjustInput.value);
+      if (!isNaN(targetQty)) {
+        const stock = await DB.fetchProductStock(editId);
+        const currentQty = stock ? parseFloat(stock.stock_qty) : 0;
+        const diff = targetQty - currentQty;
+
+        if (Math.abs(diff) > 0.001) {
+          const adjustNote = document.getElementById('productModalAdjustNote').value.trim() || '库存修正';
+          if (diff > 0) {
+            await DB.createInbound({
+              product_id: editId,
+              quantity: diff,
+              unit_price: null,
+              note: '🔧 ' + adjustNote,
+              recorded_at: today()
+            });
+          } else {
+            await DB.createOutbound({
+              product_id: editId,
+              quantity: Math.abs(diff),
+              unit_price: null,
+              note: '🔧 ' + adjustNote,
+              recorded_at: today()
+            });
+          }
+          showToast(`库存已从 ${formatNum(currentQty)} 修正为 ${formatNum(targetQty)}`, 'success');
+        }
+      }
+    }
+
     showToast(editId ? '已更新' : '已添加', 'success');
     closeProductModal();
     await renderStock();
