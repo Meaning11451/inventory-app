@@ -226,14 +226,45 @@
 
     <!-- ==================== 👥 客户 ==================== -->
     <section id="page-customers" class="tab-page">
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <div class="search-bar" style="flex:1;margin-bottom:0;">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="customerSearch" placeholder="搜索客户..." autocomplete="off">
-        </div>
-        <button id="btnAddCustomer" class="btn btn-primary" style="flex-shrink:0;padding:10px 14px;">＋ 添加</button>
+      <div class="segmented-control">
+        <button id="customerModeForm" class="active">📝 表单</button>
+        <button id="customerModeQuick">⚡ 快捷</button>
+        <button id="customerModeExcel">📊 Excel</button>
       </div>
-      <div id="customerList"></div>
+
+      <!-- 表单模式 -->
+      <div id="customerFormMode">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <div class="search-bar" style="flex:1;margin-bottom:0;">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="customerSearch" placeholder="搜索客户..." autocomplete="off">
+          </div>
+          <button id="btnAddCustomer" class="btn btn-primary" style="flex-shrink:0;padding:10px 14px;">＋ 添加</button>
+        </div>
+        <div id="customerList"></div>
+      </div>
+
+      <!-- 快捷模式 -->
+      <div id="customerQuickMode" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">粘贴内容（每行：客户名 电话 备注）</label>
+          <textarea id="customerQuickText" class="form-textarea" placeholder="张三 13800138000&#10;李四 13900139000 老客户&#10;王五"></textarea>
+        </div>
+        <button id="customerQuickParse" class="btn btn-outline btn-block">🔍 解析预览</button>
+        <div id="customerParsePreview"></div>
+        <button id="customerQuickSubmit" class="btn btn-primary btn-block" style="display:none;margin-top:12px;">👥 确认批量添加</button>
+      </div>
+
+      <!-- Excel 模式 -->
+      <div id="customerExcelMode" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">选择 Excel 文件</label>
+          <input type="file" id="customerExcelFile" class="form-input" accept=".xlsx,.xls">
+          <p class="form-hint">列顺序：客户名 | 电话 | 备注。第一行为标题会自动跳过。</p>
+        </div>
+        <div id="customerExcelPreview"></div>
+        <button id="customerExcelSubmit" class="btn btn-primary btn-block" style="display:none;margin-top:12px;">👥 确认导入</button>
+      </div>
     </section>
 
     <!-- ==================== 📋 记录 ==================== -->

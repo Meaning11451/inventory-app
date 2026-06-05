@@ -97,6 +97,11 @@ function bindEvents() {
   document.getElementById('outboundModeQuick').addEventListener('click', () => switchOutboundMode('quick'));
   document.getElementById('outboundModeExcel').addEventListener('click', () => switchOutboundMode('excel'));
 
+  // 客户模式
+  document.getElementById('customerModeForm').addEventListener('click', () => switchCustomerMode('form'));
+  document.getElementById('customerModeQuick').addEventListener('click', () => switchCustomerMode('quick'));
+  document.getElementById('customerModeExcel').addEventListener('click', () => switchCustomerMode('excel'));
+
   // 入库
   document.getElementById('inboundForm').addEventListener('submit', handleInboundSubmit);
   document.getElementById('inboundQuickParse').addEventListener('click', handleInboundQuickParse);
@@ -110,6 +115,12 @@ function bindEvents() {
   document.getElementById('outboundQuickSubmit').addEventListener('click', handleOutboundQuickSubmit);
   document.getElementById('outboundExcelFile').addEventListener('change', handleOutboundExcelImport);
   document.getElementById('outboundExcelSubmit').addEventListener('click', handleOutboundExcelSubmit);
+
+  // 客户快捷 & Excel
+  document.getElementById('customerQuickParse').addEventListener('click', handleCustomerQuickParse);
+  document.getElementById('customerQuickSubmit').addEventListener('click', handleCustomerQuickSubmit);
+  document.getElementById('customerExcelFile').addEventListener('change', handleCustomerExcelImport);
+  document.getElementById('customerExcelSubmit').addEventListener('click', handleCustomerExcelSubmit);
 
   // 记录筛选
   document.getElementById('recordTypeFilter').addEventListener('change', renderRecords);
@@ -168,6 +179,14 @@ function switchOutboundMode(mode) {
   document.getElementById('outboundQuickMode').style.display = mode === 'quick' ? 'block' : 'none';
   document.getElementById('outboundExcelMode').style.display = mode === 'excel' ? 'block' : 'none';
   const ids = { form: 'outboundModeForm', quick: 'outboundModeQuick', excel: 'outboundModeExcel' };
+  Object.entries(ids).forEach(([k, id]) => document.getElementById(id).classList.toggle('active', k === mode));
+}
+
+function switchCustomerMode(mode) {
+  document.getElementById('customerFormMode').style.display = mode === 'form' ? 'block' : 'none';
+  document.getElementById('customerQuickMode').style.display = mode === 'quick' ? 'block' : 'none';
+  document.getElementById('customerExcelMode').style.display = mode === 'excel' ? 'block' : 'none';
+  const ids = { form: 'customerModeForm', quick: 'customerModeQuick', excel: 'customerModeExcel' };
   Object.entries(ids).forEach(([k, id]) => document.getElementById(id).classList.toggle('active', k === mode));
 }
 
@@ -565,15 +584,22 @@ async function submitExcelData(fileId, opType) {
       catch (err) { showToast('创建商品失败: ' + item.parsed.rawName, 'error'); return; }
     }
   }
-  const items = resolved.map(item => ({
-    product_id: item.product?.id || newMap[item.parsed.rawName],
-    customer_id: item.customer?.id || null,
-    customer_name: item.parsed.rawCustomer || '',
-    quantity: item.parsed.quantity,
-    unit_price: item.unitPrice || null,
-    note: '',
-    recorded_at: today()
-  }));
+
+  // 自动创建不存在的客户
+  const customerMap = await autoCreateCustomers(resolved.map(r => r.parsed));
+
+  const items = resolved.map(item => {
+    const custEntry = customerMap[item.parsed.rawCustomer];
+    return {
+      product_id: item.product?.id || newMap[item.parsed.rawName],
+      customer_id: custEntry?.id || null,
+      customer_name: custEntry?.name || item.parsed.rawCustomer || '',
+      quantity: item.parsed.quantity,
+      unit_price: item.unitPrice || null,
+      note: '',
+      recorded_at: today()
+    };
+  });
   try {
     await DB[opType](items);
     showToast(`导入成功 ✅ 共 ${items.length} 条`, 'success');
@@ -588,20 +614,29 @@ async function submitQuickData(textId, opType) {
   const resolved = JSON.parse(json);
   const products = await loadProducts();
   const newMap = {};
+
+  // 先自动创建不存在的商品
   for (const item of resolved) {
     if (item.needCreate) {
       try { const np = await DB.createProduct({ name: item.parsed.rawName, unit: item.suggestedUnit }); newMap[item.parsed.rawName] = np.id; showToast('已创建新商品: ' + item.parsed.rawName, 'info'); }
       catch (err) { showToast('创建商品失败: ' + item.parsed.rawName, 'error'); return; }
     }
   }
-  const items = resolved.map(item => ({
-    product_id: item.product?.id || newMap[item.parsed.rawName],
-    customer_id: item.parsed.customer?.id || null,
-    customer_name: item.parsed.rawCustomer || '',
-    quantity: item.parsed.quantity,
-    unit_price: null, note: '',
-    recorded_at: today()
-  }));
+
+  // 自动创建不存在的客户
+  const customerMap = await autoCreateCustomers(resolved.map(r => r.parsed));
+
+  const items = resolved.map(item => {
+    const custEntry = customerMap[item.parsed.rawCustomer];
+    return {
+      product_id: item.product?.id || newMap[item.parsed.rawName],
+      customer_id: custEntry?.id || null,
+      customer_name: custEntry?.name || item.parsed.rawCustomer || '',
+      quantity: item.parsed.quantity,
+      unit_price: null, note: '',
+      recorded_at: today()
+    };
+  });
   try {
     await DB[opType](items);
     showToast(`批量操作成功 ✅ 共 ${items.length} 条`, 'success');
@@ -732,6 +767,120 @@ async function handleProductSave() {
   } catch (err) { showToast('保存失败: ' + err.message, 'error'); }
 }
 
+// ==================== 客户批量导入 ====================
+
+function parseCustomerLines(text) {
+  return text.split(/[\n;；]/).map(line => line.trim()).filter(Boolean).map((line, idx) => {
+    const parts = line.split(/\s+/);
+    const name = parts[0] || '';
+    const phone = parts[1] && /[\d-]{7,}/.test(parts[1]) ? parts[1] : '';
+    const note = parts.slice(phone ? 2 : 1).join(' ');
+    return { name, phone, note, _raw: line };
+  });
+}
+
+async function handleCustomerQuickParse() {
+  const text = document.getElementById('customerQuickText').value;
+  if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
+  const parsed = parseCustomerLines(text);
+  const existing = await loadCustomers();
+  const existingNames = new Set(existing.map(c => c.name));
+  const resolved = parsed.map(p => ({
+    ...p,
+    exists: existingNames.has(p.name),
+    _dup: existingNames.has(p.name) ? existing.find(c => c.name === p.name) : null
+  }));
+  document.getElementById('customerQuickText').dataset.resolved = JSON.stringify(resolved);
+  document.getElementById('customerParsePreview').innerHTML = `
+    <div class="parse-preview"><table>
+      <thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead>
+      <tbody>${resolved.map(r => r.exists
+        ? `<tr class="row-matched"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-warning">已存在(跳过)</span></td></tr>`
+        : `<tr class="row-new"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-success">新增</span></td></tr>`
+      ).join('')}</tbody>
+    </table></div>`;
+  const newCount = resolved.filter(r => !r.exists).length;
+  document.getElementById('customerQuickSubmit').style.display = newCount > 0 ? 'block' : 'none';
+  showToast(newCount > 0 ? `将新增 ${newCount} 个客户（${resolved.length - newCount} 个已存在跳过）` : '所有客户已存在，无需添加', 'info');
+}
+
+async function handleCustomerQuickSubmit() {
+  const json = document.getElementById('customerQuickText').dataset.resolved;
+  if (!json) return;
+  const resolved = JSON.parse(json);
+  const newCustomers = resolved.filter(r => !r.exists);
+  if (newCustomers.length === 0) { showToast('没有需要添加的客户', 'info'); return; }
+
+  let success = 0;
+  for (const c of newCustomers) {
+    try {
+      await DB.createCustomer({ name: c.name, phone: c.phone, note: c.note });
+      success++;
+    } catch (err) {
+      showToast(`添加「${c.name}」失败: ${err.message}`, 'error');
+    }
+  }
+  showToast(`成功添加 ${success} 个客户 ✅`, 'success');
+  document.getElementById('customerQuickText').value = '';
+  document.getElementById('customerParsePreview').innerHTML = '';
+  document.getElementById('customerQuickSubmit').style.display = 'none';
+  await loadCustomers(true);
+  await renderCustomers();
+  await renderDashboard();
+}
+
+async function handleCustomerExcelImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const rows = await readExcelFile(file);
+    // 自动跳过标题行
+    const parsed = rows.filter(row => row.some(c => String(c).trim())).map(row => ({
+      name: String(row[0] || '').trim(),
+      phone: String(row[1] || '').trim(),
+      note: String(row[2] || '').trim()
+    })).filter(r => r.name);
+    const existing = await loadCustomers();
+    const existingNames = new Set(existing.map(c => c.name));
+    const resolved = parsed.map(p => ({ ...p, exists: existingNames.has(p.name) }));
+    document.getElementById('customerExcelFile').dataset.resolved = JSON.stringify(resolved);
+    document.getElementById('customerExcelPreview').innerHTML = `
+      <div class="parse-preview"><table>
+        <thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead>
+        <tbody>${resolved.map(r => r.exists
+          ? `<tr class="row-matched"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-warning">已存在(跳过)</span></td></tr>`
+          : `<tr class="row-new"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-success">新增</span></td></tr>`
+        ).join('')}</tbody>
+      </table></div>`;
+    const newCount = resolved.filter(r => !r.exists).length;
+    document.getElementById('customerExcelSubmit').style.display = newCount > 0 ? 'block' : 'none';
+    showToast(`已解析 ${resolved.length} 个客户，${newCount} 个待新增`, 'info');
+  } catch (err) { showToast('Excel 解析失败: ' + err.message, 'error'); }
+}
+
+async function handleCustomerExcelSubmit() {
+  const json = document.getElementById('customerExcelFile').dataset.resolved;
+  if (!json) return;
+  const resolved = JSON.parse(json);
+  const newCustomers = resolved.filter(r => !r.exists);
+  let success = 0;
+  for (const c of newCustomers) {
+    try {
+      await DB.createCustomer({ name: c.name, phone: c.phone, note: c.note });
+      success++;
+    } catch (err) {
+      showToast(`添加「${c.name}」失败: ${err.message}`, 'error');
+    }
+  }
+  showToast(`成功导入 ${success} 个客户 ✅`, 'success');
+  document.getElementById('customerExcelPreview').innerHTML = '';
+  document.getElementById('customerExcelSubmit').style.display = 'none';
+  document.getElementById('customerExcelFile').value = '';
+  await loadCustomers(true);
+  await renderCustomers();
+  await renderDashboard();
+}
+
 // ==================== 客户弹窗 ====================
 
 function showCustomerModal(customer = null) {
@@ -792,6 +941,33 @@ async function loadCustomers(force = false) {
     try { c = await DB.fetchCustomers(); setState('customers', c); } catch (err) { c = []; }
   }
   return getState('customers') || [];
+}
+
+async function autoCreateCustomers(parsedItems) {
+  const customers = await loadCustomers();
+  const existingNames = new Set(customers.map(c => c.name));
+  const newMap = {};
+
+  for (const item of parsedItems) {
+    const name = item.rawCustomer;
+    if (!name || existingNames.has(name) || newMap[name]) continue;
+
+    try {
+      const nc = await DB.createCustomer({ name, phone: '', note: '' });
+      newMap[name] = { id: nc.id, name: nc.name };
+      existingNames.add(name);
+      showToast('已创建新客户: ' + name, 'info');
+    } catch (err) {
+      console.error('自动创建客户失败:', name, err);
+    }
+  }
+
+  // 已有的客户也要放进 map
+  for (const c of customers) {
+    if (!newMap[c.name]) newMap[c.name] = { id: c.id, name: c.name };
+  }
+
+  return newMap;
 }
 
 function today() { return new Date().toISOString().split('T')[0]; }
