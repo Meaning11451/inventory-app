@@ -886,9 +886,9 @@ function showProductModal(product = null) {
 }
 
 async function openEditModal(productId) {
-  const products = getState('products');
+  const products = await loadProducts();
   const p = products.find(pr => pr.id === productId);
-  if (!p) return;
+  if (!p) { showToast('商品信息未找到', 'error'); return; }
 
   document.getElementById('productModalTitle').textContent = '编辑商品';
   document.getElementById('productModalName').value = p.name || '';
