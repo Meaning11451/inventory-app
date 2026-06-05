@@ -1,8 +1,8 @@
 // ============================================
-// Service Worker v3 - 智能缓存
+// Service Worker v4 - 智能缓存 + 手机号客户识别
 // ============================================
 
-const APP_VERSION = 'v3';
+const APP_VERSION = 'v4';
 const CACHE_NAME = `inventory-${APP_VERSION}`;
 
 // ==================== Install ====================
