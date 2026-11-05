@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#6c5ce7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -10,17 +10,18 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
   <title>进销存</title>
-  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/style.css?v=10">
 </head>
 <body>
 
   <!-- 离线提示 -->
-  <div id="offlineBanner" class="offline-banner">⚠️ 当前处于离线状态，操作将在恢复网络后自动同步</div>
+  <div id="offlineBanner" class="offline-banner">当前处于离线状态，显示的可能是缓存数据。请联网后再保存进出库记录。</div>
 
   <!-- 顶栏 -->
   <header class="app-header">
     <h1 id="headerTitle">进销存</h1>
     <div class="header-actions">
+      <button id="installApp" class="install-button" type="button" hidden>添加到桌面</button>
       <span id="syncStatus" class="sync-status online" title="同步状态">🟢 在线</span>
     </div>
   </header>
@@ -117,10 +118,6 @@
               <label class="form-label">数量 *</label>
               <input type="number" id="inboundQty" class="form-input" placeholder="数量" step="0.01" min="0.01" required>
             </div>
-            <div class="form-group">
-              <label class="form-label">单价</label>
-              <input type="number" id="inboundPrice" class="form-input" placeholder="¥" step="0.01" min="0">
-            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -139,9 +136,10 @@
       <!-- 快捷 -->
       <div id="inboundQuickMode" style="display:none;">
         <div class="form-group">
-          <label class="form-label">粘贴内容（客户名单独一行，下面列商品）</label>
-          <textarea id="inboundQuickText" class="form-textarea" placeholder="冬盼&#10;后腿卷 10件&#10;三号 8件&#10;乌鸡卷 3件&#10;&#10;李四&#10;五花肉 5斤&#10;排骨 3件"></textarea>
+          <label class="form-label">粘贴客户和商品清单</label>
+          <textarea id="inboundQuickText" class="form-textarea" placeholder="小寨，田志强&#10;后腿卷 15件&#10;&#10;济南，武&#10;合胜源后腿卷 20件&#10;合胜源一号 5件&#10;合胜源后腿砖 5件&#10;三胜达后腿卷 10件"></textarea>
         </div>
+        <p class="form-hint quick-entry-help">客户单独一行，下面每行填“商品名 数量 单位”。空格多少不限；换客户时，再另起一行写客户名。</p>
         <button id="inboundQuickParse" class="btn btn-outline btn-block">🔍 解析预览</button>
         <div id="inboundParsePreview"></div>
         <button id="inboundQuickSubmit" class="btn btn-success btn-block" style="display:none;margin-top:12px;">📥 确认批量入库</button>
@@ -152,7 +150,7 @@
         <div class="form-group">
           <label class="form-label">选择 Excel 文件</label>
           <input type="file" id="inboundExcelFile" class="form-input" accept=".xlsx,.xls">
-          <p class="form-hint">列顺序：客户名 | 商品名 | 数量 | 单位 | 单价。第一行为标题会自动跳过。</p>
+          <p class="form-hint">前四列依次为：客户名、商品名、数量、单位。可带标题行；旧表中的单价不参与库存登记。</p>
         </div>
         <div id="inboundExcelPreview"></div>
         <button id="inboundExcelSubmit" class="btn btn-success btn-block" style="display:none;margin-top:12px;">📥 确认导入</button>
@@ -184,10 +182,6 @@
               <label class="form-label">数量 *</label>
               <input type="number" id="outboundQty" class="form-input" placeholder="数量" step="0.01" min="0.01" required>
             </div>
-            <div class="form-group">
-              <label class="form-label">单价</label>
-              <input type="number" id="outboundPrice" class="form-input" placeholder="¥" step="0.01" min="0">
-            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -205,9 +199,10 @@
 
       <div id="outboundQuickMode" style="display:none;">
         <div class="form-group">
-          <label class="form-label">粘贴内容（客户名单独一行，下面列商品）</label>
-          <textarea id="outboundQuickText" class="form-textarea" placeholder="冬盼&#10;后腿卷 10件&#10;三号 8件&#10;乌鸡卷 3件&#10;&#10;李四&#10;五花肉 5斤&#10;排骨 3件"></textarea>
+          <label class="form-label">粘贴客户和商品清单</label>
+          <textarea id="outboundQuickText" class="form-textarea" placeholder="小寨，田志强&#10;后腿卷 15件&#10;&#10;济南，武&#10;合胜源后腿卷 20件&#10;合胜源一号 5件&#10;合胜源后腿砖 5件&#10;三胜达后腿卷 10件"></textarea>
         </div>
+        <p class="form-hint quick-entry-help">客户单独一行，下面每行填“商品名 数量 单位”。空格多少不限；换客户时，再另起一行写客户名。</p>
         <button id="outboundQuickParse" class="btn btn-outline btn-block">🔍 解析预览</button>
         <div id="outboundParsePreview"></div>
         <button id="outboundQuickSubmit" class="btn btn-danger btn-block" style="display:none;margin-top:12px;">📤 确认批量出库</button>
@@ -217,7 +212,7 @@
         <div class="form-group">
           <label class="form-label">选择 Excel 文件</label>
           <input type="file" id="outboundExcelFile" class="form-input" accept=".xlsx,.xls">
-          <p class="form-hint">列顺序：客户名 | 商品名 | 数量 | 单位 | 单价</p>
+          <p class="form-hint">前四列依次为：客户名、商品名、数量、单位。可带标题行；旧表中的单价不参与库存登记。</p>
         </div>
         <div id="outboundExcelPreview"></div>
         <button id="outboundExcelSubmit" class="btn btn-danger btn-block" style="display:none;margin-top:12px;">📤 确认导入</button>
@@ -387,6 +382,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=9"></script>
+  <script type="module" src="./js/app.js?v=10"></script>
 </body>
 </html>

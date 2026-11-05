@@ -4,8 +4,8 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js';
-import { parseQuickEntry, resolveProducts, parseExcelData } from './parser.js';
-import { initSync, addToQueue, getPendingCount } from './sync.js';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer } from './parser.js';
+import { initSync, getPendingCount } from './sync.js';
 
 // 全局暴露
 window._showToast = showToast;
@@ -26,6 +26,8 @@ async function initApp() {
   });
 
   bindEvents();
+  initEntryPreviewGuards();
+  initInstallButton();
 
   initSync({
     createInbound: (p) => DB.createInbound(p),
@@ -462,7 +464,7 @@ async function handleInboundSubmit(e) {
   try {
     await DB.createInbound({
       product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
-      unit_price: document.getElementById('inboundPrice').value ? parseFloat(document.getElementById('inboundPrice').value) : null,
+      unit_price: null,
       note: document.getElementById('inboundNote').value.trim(),
       recorded_at: document.getElementById('inboundDate').value
     });
@@ -478,19 +480,15 @@ async function handleInboundQuickParse() {
   const text = document.getElementById('inboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
   const customers = await loadCustomers();
-  const parsed = parseQuickEntry(text, customers);
-  const resolved = resolveProducts(parsed, await loadProducts());
+  const products = await loadProducts();
+  const parsed = parseQuickEntry(text, customers, products);
+  const resolved = resolveProducts(parsed, products);
   document.getElementById('inboundQuickText').dataset.resolved = JSON.stringify(resolved);
   renderParsePreview('inboundParsePreview', resolved);
-  document.getElementById('inboundQuickSubmit').style.display = 'block';
 }
 
 async function handleInboundQuickSubmit() {
   await submitQuickData('inboundQuickText', 'batchCreateInbound');
-  document.getElementById('inboundQuickText').value = '';
-  document.getElementById('inboundParsePreview').innerHTML = '';
-  document.getElementById('inboundQuickSubmit').style.display = 'none';
-  await renderDashboard();
 }
 
 async function handleInboundExcelImport(e) {
@@ -499,10 +497,6 @@ async function handleInboundExcelImport(e) {
 
 async function handleInboundExcelSubmit() {
   await submitExcelData('inboundExcelFile', 'batchCreateInbound');
-  document.getElementById('inboundExcelPreview').innerHTML = '';
-  document.getElementById('inboundExcelSubmit').style.display = 'none';
-  document.getElementById('inboundExcelFile').value = '';
-  await renderDashboard();
 }
 
 // ==================== 📤 出库 ====================
@@ -536,7 +530,7 @@ async function handleOutboundSubmit(e) {
   try {
     await DB.createOutbound({
       product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
-      unit_price: document.getElementById('outboundPrice').value ? parseFloat(document.getElementById('outboundPrice').value) : null,
+      unit_price: null,
       note: document.getElementById('outboundNote').value.trim(),
       recorded_at: document.getElementById('outboundDate').value
     });
@@ -552,19 +546,15 @@ async function handleOutboundQuickParse() {
   const text = document.getElementById('outboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
   const customers = await loadCustomers();
-  const parsed = parseQuickEntry(text, customers);
-  const resolved = resolveProducts(parsed, await loadProducts());
+  const products = await loadProducts();
+  const parsed = parseQuickEntry(text, customers, products);
+  const resolved = resolveProducts(parsed, products);
   document.getElementById('outboundQuickText').dataset.resolved = JSON.stringify(resolved);
   renderParsePreview('outboundParsePreview', resolved);
-  document.getElementById('outboundQuickSubmit').style.display = 'block';
 }
 
 async function handleOutboundQuickSubmit() {
   await submitQuickData('outboundQuickText', 'batchCreateOutbound');
-  document.getElementById('outboundQuickText').value = '';
-  document.getElementById('outboundParsePreview').innerHTML = '';
-  document.getElementById('outboundQuickSubmit').style.display = 'none';
-  await renderDashboard();
 }
 
 async function handleOutboundExcelImport(e) {
@@ -573,40 +563,74 @@ async function handleOutboundExcelImport(e) {
 
 async function handleOutboundExcelSubmit() {
   await submitExcelData('outboundExcelFile', 'batchCreateOutbound');
-  document.getElementById('outboundExcelPreview').innerHTML = '';
-  document.getElementById('outboundExcelSubmit').style.display = 'none';
-  document.getElementById('outboundExcelFile').value = '';
-  await renderDashboard();
 }
 
 /**
  * 从可编辑预览表格收集数据
  */
 function collectEditablePreview(containerId) {
-  const container = document.getElementById(containerId);
-  const rows = container.querySelectorAll('tbody tr');
+  const rows = [...document.getElementById(containerId).querySelectorAll('tbody tr')];
   const items = [];
-  rows.forEach(row => {
-    const custInput = row.querySelector('.ep-customer');
+  for (const [index, row] of rows.entries()) {
     const nameInput = row.querySelector('.ep-name');
     const qtyInput = row.querySelector('.ep-qty');
-    const unitInput = row.querySelector('.ep-unit');
-
-    const rawCustomer = custInput ? custInput.value.trim() : '';
-    const rawName = (nameInput?.value || '').trim();
-    const quantity = parseFloat(qtyInput?.value || '0');
-    const unit = (unitInput?.value || '').trim();
-
-    if (rawName && quantity > 0) {
-      items.push({ rawCustomer, rawName, quantity, unit });
+    const rawName = nameInput.value.trim();
+    const quantity = Number(qtyInput.value);
+    if (!rawName || !Number.isFinite(quantity) || quantity <= 0) {
+      row.classList.add('row-error');
+      const invalid = !rawName ? nameInput : qtyInput;
+      invalid.setAttribute('aria-invalid', 'true');
+      invalid.focus();
+      showToast(`第 ${index + 1} 行的商品名或数量有误，请更正或移除这一行`, 'warning');
+      return null;
     }
-  });
+    const rawCustomer = row.querySelector('.ep-customer').value.trim();
+    const sameCustomer = findCustomer(rawCustomer, [{ name: row.dataset.customer || '' }]);
+    items.push({ rawCustomer, rawName, quantity, unit: row.querySelector('.ep-unit').value.trim(), phone: sameCustomer ? row.dataset.phone || '' : '' });
+  }
   return items;
+}
+
+function initEntryPreviewGuards() {
+  for (const direction of ['inbound', 'outbound']) {
+    document.getElementById(`${direction}QuickText`).addEventListener('input', () => {
+      document.getElementById(`${direction}ParsePreview`).innerHTML = '';
+      document.getElementById(`${direction}QuickSubmit`).style.display = 'none';
+    });
+    for (const previewId of [`${direction}ParsePreview`, `${direction}ExcelPreview`]) {
+      document.getElementById(previewId).addEventListener('input', event => {
+        event.target.removeAttribute('aria-invalid');
+        const row = event.target.closest('tr');
+        if (row && row.querySelector('.ep-name').value.trim() && Number(row.querySelector('.ep-qty').value) > 0) row.classList.remove('row-error');
+      });
+    }
+  }
+}
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  installPrompt = event;
+  document.getElementById('installApp').hidden = false;
+});
+
+function initInstallButton() {
+  const button = document.getElementById('installApp');
+  button.addEventListener('click', async () => {
+    if (!installPrompt) return;
+    const prompt = installPrompt;
+    installPrompt = null;
+    button.hidden = true;
+    await prompt.prompt();
+  });
+  window.addEventListener('appinstalled', () => { button.hidden = true; installPrompt = null; });
 }
 
 // ==================== Excel 通用 ====================
 
 async function handleExcelFile(e, fileId, previewId, submitId) {
+  document.getElementById(previewId).innerHTML = '';
+  document.getElementById(submitId).style.display = 'none';
   const file = e.target.files[0];
   if (!file) return;
   try {
@@ -615,7 +639,6 @@ async function handleExcelFile(e, fileId, previewId, submitId) {
     const { resolved } = parseExcelData(rows, customers, products);
     document.getElementById(fileId).dataset.resolved = JSON.stringify(resolved);
     renderExcelPreview(previewId, resolved);
-    document.getElementById(submitId).style.display = 'block';
     showToast(`已解析 ${resolved.length} 条记录`, 'info');
   } catch (err) { showToast('Excel 解析失败: ' + err.message, 'error'); }
 }
@@ -640,154 +663,64 @@ function renderExcelPreview(containerId, resolved) {
 }
 
 async function submitExcelData(fileId, opType) {
-  // 确定预览区 ID
-  const previewId = fileId === 'inboundExcelFile' ? 'inboundExcelPreview' : 'outboundExcelPreview';
-  const editedItems = collectEditablePreview(previewId);
-
-  if (editedItems.length === 0) {
-    showToast('没有有效数据', 'warning');
-    return;
-  }
-
-  // 复用快捷提交逻辑
-  const products = await loadProducts();
-  const customers = await loadCustomers();
-  const newMap = {};
-
-  for (const item of editedItems) {
-    let product = products.find(p => p.name === item.rawName);
-    if (!product) {
-      product = products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase());
-    }
-    if (!product) {
-      product = products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
-    }
-    if (!product) {
-      try {
-        const np = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
-        newMap[item.rawName] = np.id;
-        products.push(np);
-      } catch (err) { showToast('创建商品失败: ' + item.rawName, 'error'); return; }
-    }
-    if (item.rawCustomer) {
-      const existingCust = customers.find(c => c.name === item.rawCustomer);
-      if (!existingCust) {
-        try {
-          const nc = await DB.createCustomer({ name: item.rawCustomer, phone: '', note: '' });
-          customers.push(nc);
-        } catch (err) { /* ignore */ }
-      }
-    }
-  }
-
-  const items = editedItems.map(item => {
-    const product = products.find(p => p.name === item.rawName) ||
-                    products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase()) ||
-                    products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
-    const customer = item.rawCustomer ? customers.find(c => c.name === item.rawCustomer) : null;
-    return {
-      product_id: product?.id || newMap[item.rawName],
-      customer_id: customer?.id || null,
-      customer_name: item.rawCustomer || '',
-      quantity: item.quantity,
-      unit_price: null, note: '',
-      recorded_at: today()
-    };
-  });
-
-  try {
-    await DB[opType](items);
-    showToast(`导入成功 ✅ 共 ${items.length} 条`, 'success');
-    document.getElementById(previewId).innerHTML = '';
-    document.getElementById(fileId === 'inboundExcelFile' ? 'inboundExcelSubmit' : 'outboundExcelSubmit').style.display = 'none';
-    document.getElementById(fileId).value = '';
-    await renderDashboard();
-  } catch (err) { showToast('导入失败: ' + err.message, 'error'); }
+  const direction = fileId.startsWith('inbound') ? 'inbound' : 'outbound';
+  return submitBatchPreview(`${direction}ExcelPreview`, fileId, `${direction}ExcelSubmit`, opType);
 }
 
-// ==================== 快捷提交通用 ====================
-
 async function submitQuickData(textId, opType) {
-  // 确定预览区 ID
-  const previewId = textId === 'inboundQuickText' ? 'inboundParsePreview' : 'outboundParsePreview';
+  const direction = textId.startsWith('inbound') ? 'inbound' : 'outbound';
+  return submitBatchPreview(`${direction}ParsePreview`, textId, `${direction}QuickSubmit`, opType);
+}
+
+async function submitBatchPreview(previewId, inputId, buttonId, opType) {
+  const button = document.getElementById(buttonId);
+  if (button.disabled) return false;
   const editedItems = collectEditablePreview(previewId);
-
-  if (editedItems.length === 0) {
-    showToast('没有有效数据（商品名和数量必填）', 'warning');
-    return;
-  }
-
-  const products = await loadProducts();
-  const customers = await loadCustomers();
-  const newMap = {};
-  const customerMap = {};
-
-  // 预处理：匹配已有商品和客户
-  for (const item of editedItems) {
-    // 匹配商品
-    let product = products.find(p => p.name === item.rawName);
-    if (!product) {
-      product = products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase());
-    }
-    if (!product) {
-      product = products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
-    }
-    if (!product) {
-      try {
-        const np = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
-        newMap[item.rawName] = np.id;
-        showToast('已创建新商品: ' + item.rawName, 'info');
-        products.push(np);
-      } catch (err) {
-        showToast('创建商品失败: ' + item.rawName, 'error');
-        return;
-      }
-    }
-
-    // 匹配客户
-    if (item.rawCustomer) {
-      let customer = customers.find(c => c.name === item.rawCustomer);
-      if (!customer) {
-        try {
-          const nc = await DB.createCustomer({ name: item.rawCustomer, phone: '', note: '' });
-          customerMap[item.rawCustomer] = { id: nc.id, name: nc.name };
-          customers.push(nc);
-          showToast('已创建新客户: ' + item.rawCustomer, 'info');
-        } catch (err) {
-          showToast('创建客户失败: ' + item.rawCustomer, 'error');
-          return;
-        }
-      } else if (!customerMap[item.rawCustomer]) {
-        customerMap[item.rawCustomer] = { id: customer.id, name: customer.name };
-      }
-    }
-  }
-
-  const items = editedItems.map(item => {
-    const product = products.find(p => p.name === item.rawName) ||
-                    products.find(p => p.name.toLowerCase() === item.rawName.toLowerCase()) ||
-                    products.find(p => p.name.includes(item.rawName) || item.rawName.includes(p.name));
-    const custEntry = item.rawCustomer ? customerMap[item.rawCustomer] : null;
-    return {
-      product_id: product?.id || newMap[item.rawName],
-      customer_id: custEntry?.id || null,
-      customer_name: custEntry?.name || item.rawCustomer || '',
-      quantity: item.quantity,
-      unit_price: null, note: '',
-      recorded_at: today()
-    };
-  });
-
+  if (!editedItems) return false;
+  if (!editedItems.length) { showToast('请先解析预览，检查商品和数量', 'warning'); return false; }
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = '正在保存…';
   try {
-    await DB[opType](items);
-    showToast(`批量操作成功 ✅ 共 ${items.length} 条`, 'success');
-    // 清空
-    document.getElementById(textId).value = '';
+    const [products, customers] = await Promise.all([loadProducts(true), loadCustomers(true)]);
+    const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
+    for (const item of editedItems) {
+      const product = findProduct(item.rawName, products);
+      if (product && item.unit && unitKey(item.unit) !== unitKey(product.unit)) {
+        throw new Error(`「${product.name}」的单位是「${product.unit}」，请核对数量并将单位改为「${product.unit}」`);
+      }
+    }
+    const records = [];
+    for (const item of editedItems) {
+      let product = findProduct(item.rawName, products);
+      if (!product) {
+        product = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
+        products.push(product);
+      }
+      let customer = findCustomer(item.rawCustomer, customers);
+      if (item.rawCustomer && !customer) {
+        customer = await DB.createCustomer({ name: item.rawCustomer, phone: item.phone, note: '' });
+        customers.push(customer);
+      }
+      records.push({
+        product_id: product.id, customer_id: customer?.id || null,
+        customer_name: customer?.name || item.rawCustomer, quantity: item.quantity,
+        unit_price: null, note: '', recorded_at: today()
+      });
+    }
+    await DB[opType](records);
+    document.getElementById(inputId).value = '';
     document.getElementById(previewId).innerHTML = '';
-    document.getElementById(textId === 'inboundQuickText' ? 'inboundQuickSubmit' : 'outboundQuickSubmit').style.display = 'none';
+    button.style.display = 'none';
+    showToast(`保存成功，共 ${records.length} 条`, 'success');
     await renderDashboard();
+    return true;
   } catch (err) {
-    showToast('操作失败: ' + err.message, 'error');
+    showToast('保存失败，内容已保留：' + err.message, 'error');
+    return false;
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
   }
 }
 
@@ -833,7 +766,7 @@ async function renderRecords() {
                 <div style="flex:1;min-width:0;">
                   ${r.customer_name ? `<span style="font-size:0.75rem;color:var(--color-primary);font-weight:600;">👤 ${escapeHtml(r.customer_name)}</span><br>` : ''}
                   <span style="font-weight:500;">${escapeHtml(pn)}</span>
-                  <span style="font-size:0.7rem;color:var(--color-text-muted);margin-left:8px;">${r.unit_price ? '¥'+formatNum(r.unit_price)+' · ' : ''}${escapeHtml(r.note||'')}</span>
+                  <span style="font-size:0.7rem;color:var(--color-text-muted);margin-left:8px;">${escapeHtml(r.note||'')}</span>
                 </div>
                 <div style="font-weight:700;text-align:right;min-width:50px;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
                   ${isIn?'+':'-'}${formatNum(r.quantity)} ${escapeHtml(unit)}
@@ -1158,23 +1091,28 @@ async function handleCustomerSave() {
 // ==================== 解析预览 ====================
 
 function renderParsePreview(containerId, resolved) {
-  // 可编辑预览：每行都是输入框，可手动修改
-  const hasCustomer = resolved.some(r => r.parsed.rawCustomer);
+  const direction = containerId.startsWith('inbound') ? 'inbound' : 'outbound';
+  const isExcel = containerId.includes('Excel');
+  const button = document.getElementById(`${direction}${isExcel ? 'Excel' : 'Quick'}Submit`);
+  button.style.display = resolved.length ? 'block' : 'none';
+  if (!resolved.length) {
+    document.getElementById(containerId).innerHTML = '<p class="form-hint">没有识别到商品，请在客户名下面填写“商品名 数量 单位”。</p>';
+    return;
+  }
   document.getElementById(containerId).innerHTML = `
+    <p class="preview-summary" role="status">识别到 ${resolved.length} 条商品记录。请核对客户、商品和数量后保存；不同品牌不会合并。</p>
     <div class="editable-preview"><table>
-      <thead><tr>
-        ${hasCustomer ? '<th>客户</th>' : ''}
-        <th>商品</th><th>数量</th><th>单位</th><th>状态</th><th></th>
-      </tr></thead>
-      <tbody>${resolved.map((item, idx) => {
-        const b = item.parsed.error ? ['格式错误','danger','row-error'] : item.needCreate ? ['待新建','warning','row-new'] : ['已匹配','success','row-matched'];
-        return `<tr class="${b[2]}" data-idx="${idx}">
-          ${hasCustomer ? `<td><input class="ep-input ep-customer" value="${escapeHtml(item.parsed.rawCustomer||'')}" placeholder="客户"></td>` : ''}
-          <td><input class="ep-input ep-name" value="${escapeHtml(item.parsed.rawName||'')}" placeholder="商品名"></td>
-          <td style="width:70px;"><input class="ep-input ep-qty" type="number" value="${item.parsed.quantity||''}" placeholder="数量" step="0.01" min="0.01" style="text-align:center;"></td>
-          <td style="width:60px;"><input class="ep-input ep-unit" value="${escapeHtml(item.parsed.unit||item.suggestedUnit||'件')}" placeholder="单位" style="text-align:center;"></td>
-          <td><span class="badge badge-${b[1]}">${b[0]}</span></td>
-          <td><button class="btn btn-sm btn-danger ep-remove" data-idx="${idx}" title="移除">✕</button></td>
+      <thead><tr><th>客户</th><th>商品</th><th>数量</th><th>单位</th><th>状态</th><th></th></tr></thead>
+      <tbody>${resolved.map((item, index) => {
+        const parsed = item.parsed;
+        const status = parsed.error ? ['需更正', 'danger', 'row-error'] : item.needCreate ? ['待新建', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
+        return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
+          <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户（可选）"></td>
+          <td><input class="ep-input ep-name" aria-label="第 ${index + 1} 行商品" value="${escapeHtml(parsed.rawName)}" placeholder="商品名"></td>
+          <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="0.01" min="0.01"></td>
+          <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>
+          <td><span class="badge badge-${status[1]}" title="${escapeHtml(parsed.error || '')}">${status[0]}</span></td>
+          <td><button class="btn btn-sm btn-danger ep-remove" aria-label="移除第 ${index + 1} 行" title="移除这一行">✕</button></td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
@@ -1228,8 +1166,8 @@ async function autoCreateCustomers(parsedItems) {
   return newMap;
 }
 
-function today() { return new Date().toISOString().split('T')[0]; }
-function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function formatNum(n) { if (n === null || n === undefined) return '0'; return Number(n) === Math.floor(n) ? String(Math.floor(n)) : String(Number(n).toFixed(2)); }
 function debounce(fn, d) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), d); }; }
 function groupBy(arr, kfn) { const m = {}; arr.forEach(i => { const k = typeof kfn === 'function' ? kfn(i) : i[kfn]; if (!m[k]) m[k] = []; m[k].push(i); }); return m; }

@@ -7,7 +7,7 @@
   --color-primary: #6c5ce7;
   --color-primary-dark: #5a4bd1;
   --color-primary-light: #f0edff;
-  --color-primary-gradient: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+  --color-primary-gradient: linear-gradient(135deg, #6c5ce7 0%, #5a4bd1 100%);
   --color-success: #00b894;
   --color-success-light: #e6faf4;
   --color-danger: #e17055;
@@ -18,7 +18,7 @@
   --color-surface: #ffffff;
   --color-text: #2d3436;
   --color-text-secondary: #636e72;
-  --color-text-muted: #b2bec3;
+  --color-text-muted: #626d73;
   --color-border: #e8eaef;
   --color-border-focus: #6c5ce7;
   --radius-sm: 8px;
@@ -1003,4 +1003,49 @@ input[type="file"].form-input::file-selector-button:hover {
   .tab-item { font-size: 0.7rem; padding: 8px 4px; }
   .tab-icon { font-size: 1.3rem; }
   .segmented-control button { font-size: 0.88rem; }
+}
+
+/* Keep the same app on a phone, and give the desktop room to work. */
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.install-button { color: white; background: transparent; border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 0.8rem; cursor: pointer; }
+.install-button[hidden] { display: none; }
+:is(button, input, select, textarea):focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
+.app-header button:focus-visible { outline-color: white; }
+.quick-entry-help { color: var(--color-text-secondary); margin: -4px 0 14px; font-size: 0.85rem; }
+.preview-summary { margin: 18px 0 10px; color: var(--color-text-secondary); font-size: 0.85rem; }
+.editable-preview .ep-input { font-size: 16px; min-height: 44px; }
+.editable-preview .ep-remove { min-width: 44px; min-height: 44px; }
+#inboundQuickText, #outboundQuickText { min-height: 240px; }
+.editable-preview .ep-customer { min-width: 120px; }
+.editable-preview .ep-name { min-width: 150px; }
+.editable-preview .ep-qty { min-width: 76px; }
+.editable-preview .ep-unit { min-width: 60px; }
+.editable-preview input[aria-invalid="true"] { border-color: var(--color-danger); }
+.btn:disabled { cursor: wait; opacity: 0.65; }
+.btn-success { background: #087f64; color: white; }
+.btn-danger { background: #b94b32; color: white; }
+.form-hint { color: var(--color-text-secondary); font-size: 0.85rem; }
+
+@media (min-width: 1024px) {
+  .app-header { margin-left: 176px; padding: 0 32px; }
+  .main-content { width: calc(100% - 176px); max-width: 1240px; margin: 0 0 0 176px; padding: 28px 32px 40px; }
+  .tab-bar { top: 0; right: auto; bottom: 0; width: 176px; flex-direction: column; gap: 8px; padding: 80px 12px 24px; border-top: 0; border-right: 1px solid var(--color-border); box-shadow: none; }
+  .tab-bar::before { content: '进销存'; position: absolute; top: 16px; left: 28px; color: var(--color-primary); font-size: 1.15rem; font-weight: 700; }
+  .tab-item { flex: none; min-height: 48px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 12px 16px; font-size: 1rem; border-radius: 8px; color: var(--color-text-secondary); }
+  .tab-item.active { background: var(--color-primary-light); }
+  .tab-item.active::before { display: none; }
+  .tab-icon { margin: 0; }
+  .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  #stockList, #customerList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #stockList > .card, #customerList > .card { margin: 0; }
+  :is(#stockList, #customerList) > .empty-state { grid-column: 1 / -1; }
+  .form-textarea { min-height: 220px; }
+  .editable-preview table { min-width: 720px; }
+  .editable-preview .ep-input { min-height: 36px; }
+  .segmented-control { max-width: 600px; }
+  .modal-sheet { max-height: 85vh; overflow-y: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

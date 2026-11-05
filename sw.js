@@ -2,7 +2,7 @@
 // Service Worker v8 - JS/CSS Network-First
 // ============================================
 
-const APP_VERSION = 'v8';
+const APP_VERSION = 'v10';
 const CACHE_NAME = `inventory-${APP_VERSION}`;
 
 // ==================== Install ====================
@@ -16,7 +16,7 @@ self.addEventListener('install', () => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.map(key => caches.delete(key)))
+      Promise.all(keys.filter(key => key.startsWith('inventory-') && key !== CACHE_NAME).map(key => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
