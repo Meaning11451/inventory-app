@@ -56,3 +56,13 @@ test('daily writes retain caller IDs and ignore duplicates instead of overwritin
  assert.ok(calls.every(call=>(Array.isArray(call.write.rows)?call.write.rows[0]:call.write.rows).id==='fixed-save'));
  assert.ok(calls.every(call=>call.write.options.ignoreDuplicates===true));
 });
+
+test('inventory follows persisted sheet order, including numeric strings and unranked goods', async()=>{
+  tables.current_stock = [
+    {id:'a',name:'甲',display_order:'3'},
+    {id:'z',name:'丙',display_order:'1'},
+    {id:'b',name:'乙',display_order:2},
+    {id:'u',name:'新商品',display_order:null}
+  ];
+  assert.deepEqual((await api.fetchCurrentStock()).map(row=>row.id), ['z','b','a','u']);
+});

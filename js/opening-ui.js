@@ -61,7 +61,7 @@ export function initOpeningImport({ api, onChanged }) {
         <td><input data-field="name" aria-label="期初第 ${index + 1} 行商品名称" value="${escape(row.name)}"></td>
         <td><input data-field="spec" aria-label="期初第 ${index + 1} 行规格" value="${escape(row.spec)}" placeholder="可选"></td>
         <td><input data-field="unit" aria-label="期初第 ${index + 1} 行单位" value="${escape(row.unit)}" placeholder="必填"></td>
-        <td><input data-field="quantity" aria-label="期初第 ${index + 1} 行库存数量" type="number" step="0.01" value="${row.quantity ?? ''}"></td>
+        <td><input data-field="quantity" aria-label="期初第 ${index + 1} 行库存数量" type="number" step="1" inputmode="numeric" value="${row.quantity ?? ''}"></td>
         <td class="opening-row-status"></td></tr>`).join('')}</tbody></table></div>`;
     byId('openingFileSummary').textContent = `找到第 ${parsed.headerRow} 行表头，共 ${rows.length} 个商品${parsed.skippedSummaryRows ? `，已排除 ${parsed.skippedSummaryRows} 行合计` : ''}。读取“库存数量”，不读取旧账的“期初数量”、成本和售价。`;
     updateRowLabels();

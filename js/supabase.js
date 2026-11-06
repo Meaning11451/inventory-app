@@ -107,7 +107,9 @@ export async function deleteCustomer(id) {
 // ==================== 库存查询 ====================
 
 export async function fetchCurrentStock(search = '') {
-  return (await fetchAllRows('current_stock', search)).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  const position = row => row.display_order == null ? Infinity : Number(row.display_order);
+  return (await fetchAllRows('current_stock', search)).sort((a, b) =>
+    position(a) - position(b) || a.name.localeCompare(b.name, 'zh-CN') || a.id.localeCompare(b.id));
 }
 
 export async function exportInventoryBackup() {

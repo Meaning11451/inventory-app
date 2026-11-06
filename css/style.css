@@ -288,6 +288,12 @@ body {
 }
 
 .stock-card-actions { display: flex; gap: 4px; margin-left: 8px; }
+.stock-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; min-height: 36px; margin: 4px 0 0; padding-top: 4px; font-size: 0.9rem; }
+.stock-summary-total { display: inline-flex; align-items: baseline; gap: 5px; }
+.stock-summary-total strong { font-size: 1.4rem; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--color-primary-dark); }
+.stock-summary-count { margin-left: auto; color: var(--color-text-secondary); font-size: 0.8rem; }
+.stock-summary-divider { padding: 0 4px; color: var(--color-text-secondary); }
+.stock-summary + .opening-panel { margin-top: 18px; }
 .stock-action-label { display: none; }
 .stock-card-actions .stock-quick-out { background: #fff5f1; color: #a43d29; border: 1px solid #ecd9d0; box-shadow: none; }
 .stock-card-actions .stock-del { background: white; color: #a43d29; border: 1px solid var(--color-border); box-shadow: none; }

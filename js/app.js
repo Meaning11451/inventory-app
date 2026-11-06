@@ -4,7 +4,7 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts } from './parser.js';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers } from './parser.js';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
@@ -321,7 +321,17 @@ async function renderStock() {
   const search = document.getElementById('stockSearch')?.value || '';
   const container = document.getElementById('stockList');
   try {
-    const stockData = await DB.fetchCurrentStock(search);
+    const allStock = await DB.fetchCurrentStock();
+    const stockData = allStock.filter(item => item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+    const totals = new Map();
+    for (const item of allStock) {
+      const unit = item.unit || '件';
+      totals.set(unit, (totals.get(unit) || 0) + Number(item.stock_qty));
+    }
+    const totalText = [...totals].map(([unit, quantity]) =>
+      `<strong>${formatNum(quantity)}</strong><span>${escapeHtml(unit)}</span>`).join('<span class="stock-summary-divider">·</span>');
+    document.getElementById('stockSummary').innerHTML =
+      `<span>总库存</span><span class="stock-summary-total">${totalText || '<strong>0</strong><span>件</span>'}</span><span class="stock-summary-count">共 ${allStock.length} 个商品${search.trim() ? `，找到 ${stockData.length} 个` : ''}</span>`;
     setDatabaseStatus(true);
     setState('stockCache', stockData);
     if (stockData.length === 0) {
@@ -397,6 +407,7 @@ async function renderStock() {
     });
 
   } catch (err) {
+    document.getElementById('stockSummary').textContent = '总库存暂时无法读取，请刷新重试';
     setDatabaseStatus(false);
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>加载失败，检查网络</p></div>`;
   }
@@ -417,8 +428,8 @@ async function openQuickInModal(productId, productName, unit) {
 
 async function handleQuickInCore() {
   const productId = document.getElementById('quickInModalOverlay').dataset.productId;
-  const qty = parseFloat(document.getElementById('quickInQty').value);
-  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
+  const qty = Number(document.getElementById('quickInQty').value);
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customerId = document.getElementById('quickInCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
@@ -447,8 +458,8 @@ async function openQuickOutModal(productId, productName, unit) {
 
 async function handleQuickOutCore() {
   const productId = document.getElementById('quickOutModalOverlay').dataset.productId;
-  const qty = parseFloat(document.getElementById('quickOutQty').value);
-  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
+  const qty = Number(document.getElementById('quickOutQty').value);
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customerId = document.getElementById('quickOutCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
@@ -483,8 +494,8 @@ async function handleInboundSubmitCore(e) {
   e.preventDefault();
   const product_id = document.getElementById('inboundProduct').value;
   if (!product_id) { showToast('请选择商品', 'warning'); return; }
-  const qty = parseFloat(document.getElementById('inboundQty').value);
-  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
+  const qty = Number(document.getElementById('inboundQty').value);
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customer_id = document.getElementById('inboundCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
@@ -549,8 +560,8 @@ async function handleOutboundSubmitCore(e) {
   e.preventDefault();
   const product_id = document.getElementById('outboundProduct').value;
   if (!product_id) { showToast('请选择商品', 'warning'); return; }
-  const qty = parseFloat(document.getElementById('outboundQty').value);
-  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
+  const qty = Number(document.getElementById('outboundQty').value);
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customer_id = document.getElementById('outboundCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
@@ -639,7 +650,7 @@ function initEntryPreviewGuards() {
       document.getElementById(previewId).addEventListener('input', event => {
         event.target.removeAttribute('aria-invalid');
         const row = event.target.closest('tr');
-        if (row && row.querySelector('.ep-name').value.trim() && Number(row.querySelector('.ep-qty').value) > 0) row.classList.remove('row-error');
+        if (row && row.querySelector('.ep-name').value.trim() && validDailyQuantity(Number(row.querySelector('.ep-qty').value))) row.classList.remove('row-error');
       });
     }
   }
@@ -726,6 +737,7 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
     const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
     for (const item of editedItems) {
       if (matchingProducts(item.rawName,products).length > 1) throw new Error(`「${item.rawName}」有多个规格，请使用表单选择具体商品`);
+      if (matchingCustomers(item.rawCustomer,customers).length > 1) throw new Error(`「${item.rawCustomer}」对应多个客户，请补充完整名称或地址`);
       const product = findProduct(item.rawName, products);
       if (product && item.unit && unitKey(item.unit) !== unitKey(product.unit)) {
         throw new Error(`「${product.name}」的单位是「${product.unit}」，请核对数量并将单位改为「${product.unit}」`);
@@ -939,6 +951,12 @@ async function handleProductSaveCore() {
   const editId = document.getElementById('productModalOverlay').dataset.editId;
   const spec = document.getElementById('productModalSpec').value.trim();
   const unit = document.getElementById('productModalUnit').value.trim() || '件';
+  const adjustment = document.getElementById('productModalAdjustQty');
+  if (editId && adjustment && adjustment.value !== '' &&
+      (!Number.isSafeInteger(Number(adjustment.value)) || Math.abs(Number(adjustment.value)) > 9999999999)) {
+    showToast('库存修正请输入整数', 'warning');
+    return;
+  }
 
   try {
     // 保存商品信息
@@ -951,8 +969,8 @@ async function handleProductSaveCore() {
     // 库存修正（仅编辑时可用）
     const adjustInput = document.getElementById('productModalAdjustQty');
     if (editId && adjustInput && adjustInput.value !== '') {
-      const targetQty = parseFloat(adjustInput.value);
-      if (!isNaN(targetQty)) {
+      const targetQty = Number(adjustInput.value);
+      if (Number.isSafeInteger(targetQty)) {
         const stock = await DB.fetchProductStock(editId);
         const currentQty = stock ? parseFloat(stock.stock_qty) : 0;
         const diff = targetQty - currentQty;
@@ -1099,8 +1117,8 @@ function renderParsePreview(containerId, resolved) {
         const status = parsed.error ? ['需更正', 'danger', 'row-error'] : item.needCreate ? ['待新建', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
         return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
           <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户（可选）"></td>
-          <td><input class="ep-input ep-name" aria-label="第 ${index + 1} 行商品" value="${escapeHtml(parsed.rawName)}" placeholder="商品名"></td>
-          <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="0.01" min="0.01"></td>
+          <td><input class="ep-input ep-name" aria-label="第 ${index + 1} 行商品" value="${escapeHtml(item.product?.name || parsed.rawName)}" placeholder="商品名"></td>
+          <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="1" inputmode="numeric" min="1"></td>
           <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>
           <td><span class="badge badge-${status[1]}" title="${escapeHtml(parsed.error || '')}">${status[0]}</span></td>
           <td><button class="btn btn-sm btn-danger ep-remove" aria-label="移除第 ${index + 1} 行" title="移除这一行">✕</button></td>
@@ -1182,7 +1200,7 @@ async function handleOutboundSubmit(event) { event?.preventDefault?.(); return w
 async function handleProductSave(event) { event?.preventDefault?.(); return withSaveLock('productModalOverlay',()=>handleProductSaveCore(event)); }
 async function handleCustomerSave(event) { event?.preventDefault?.(); return withSaveLock('customerModalOverlay',()=>handleCustomerSaveCore(event)); }
 
-function validDailyQuantity(value) { return Number.isFinite(value) && value > 0 && value <= 9999999999.99 && Math.abs(value*100-Math.round(value*100)) < 0.0001; }
+function validDailyQuantity(value) { return Number.isSafeInteger(value) && value > 0 && value <= 9999999999; }
 
 async function saveDailyRecord(scope,method,record) {
   const [payload]=saveIntents.records(scope,[record]);

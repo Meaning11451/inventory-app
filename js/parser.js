@@ -6,18 +6,39 @@ const nameKey = name => String(name ?? '').normalize('NFKC').replace(/\s+/g, '')
 
 export function matchingProducts(name, products = []) {
   const key=nameKey(name);
-  return key ? products.filter(product=>nameKey(product.name)===key) : [];
+  if (!key) return [];
+  const exact = products.filter(product=>nameKey(product.name)===key);
+  return exact.length ? exact : products.filter(product =>
+    Array.isArray(product.aliases) && product.aliases.some(alias=>nameKey(alias)===key));
 }
 export function findProduct(name, products = []) {
   const matches=matchingProducts(name,products);
   return matches.length === 1 ? matches[0] : null;
 }
 
+export function matchingCustomers(name, customers = []) {
+  const customerKey = value => nameKey(value).replace(/[,、;]/g, '');
+  const key = customerKey(name);
+  if (!key) return [];
+  const exact = customers.filter(c => c.name === name);
+  if (exact.length) return exact;
+  const normalized = customers.filter(c => customerKey(c.name) === key);
+  if (normalized.length) return normalized;
+  const parts = String(name ?? '').normalize('NFKC').split(/[,、;]/).map(part=>nameKey(part)).filter(Boolean);
+  const candidates = new Set([key]);
+  if (parts.length === 2) candidates.add(parts[1] + parts[0]);
+  const reordered = customers.filter(c => candidates.has(customerKey(c.name)));
+  if (reordered.length) return reordered;
+  // A known location suffix may be omitted; ordinary name substrings never match.
+  return customers.filter(c => {
+    const full = customerKey(c.name);
+    const withoutAddress = full.replace(/(?:第)?\d+排(?:第)?\d+号$/, '');
+    return withoutAddress !== full && candidates.has(withoutAddress);
+  });
+}
+
 export function findCustomer(name, customers = []) {
-  const exact = customers.find(c => c.name === name);
-  if (exact) return exact;
-  const key = nameKey(name).replace(/,/g, '');
-  const matches = key ? customers.filter(c => nameKey(c.name).replace(/,/g, '') === key) : [];
+  const matches = matchingCustomers(name, customers);
   return matches.length === 1 ? matches[0] : null;
 }
 
@@ -87,7 +108,7 @@ export function parseQuickEntry(text, customers = [], products = []) {
       unit: productLine?.unit || null,
       lineIndex,
       rawLine: line,
-      error: !productLine ? '无法识别数量，请使用：商品名 数量 单位' : !Number.isFinite(quantity) || quantity <= 0 ? '数量必须大于 0' : null
+      error: matchingCustomers(customerName, customers).length > 1 ? '客户名称对应多个客户，请补充完整名称或地址' : !productLine ? '无法识别数量，请使用：商品名 数量 单位' : !Number.isSafeInteger(quantity) || quantity <= 0 ? '数量必须是大于 0 的整数' : null
     });
   });
   return results;
@@ -95,8 +116,10 @@ export function parseQuickEntry(text, customers = [], products = []) {
 
 export function resolveProducts(parsedLines, existingProducts = []) {
   return parsedLines.map(parsed => {
-    const product = parsed.error ? null : findProduct(parsed.rawName, existingProducts);
-    return { parsed, product, needCreate: !parsed.error && !product, suggestedUnit: parsed.unit || product?.unit || '件' };
+    const matches = parsed.error ? [] : matchingProducts(parsed.rawName, existingProducts);
+    const checked = matches.length > 1 ? { ...parsed, error: '匹配到多个商品，请填写完整商品名称并核对规格' } : parsed;
+    const product = checked.error ? null : matches[0] || null;
+    return { parsed: checked, product, needCreate: !checked.error && !product, suggestedUnit: parsed.unit || product?.unit || '件' };
   });
 }
 
@@ -117,7 +140,7 @@ export function parseExcelData(rows, customers = [], products = []) {
     const priceText = String(row[4] ?? '').trim();
     const customer = findCustomer(customerName, customers);
     const product = findProduct(productName, products);
-    const error = !productName ? '缺少商品名' : !Number.isFinite(quantity) || quantity <= 0 ? '数量必须是大于 0 的数字' : null;
+    const error = matchingCustomers(customerName, customers).length > 1 ? '客户名称对应多个客户，请补充完整名称或地址' : !productName ? '缺少商品名' : matchingProducts(productName, products).length > 1 ? '匹配到多个商品，请填写完整商品名称并核对规格' : !Number.isSafeInteger(quantity) || quantity <= 0 ? '数量必须是大于 0 的整数' : null;
     const parsed = {
       rawCustomer: customer?.name || customerName, customer, rawName: productName,
       quantity: Number.isFinite(quantity) ? quantity : null, unit: unit || null,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct } from '../js/parser.js';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingCustomers } from '../js/parser.js';
 
 const products = [
   { id: 'plain', name: '后腿卷', unit: '件' },
@@ -29,9 +29,9 @@ test('different brands never match by substring', () => {
   assert.equal(findProduct('后腿', products), null);
 });
 test('standalone and inline entries preserve explicit units', () => {
-  const rows = parseQuickEntry('后腿卷 15箱\n张三 后腿卷 2.5 公斤', [{ id: 'c', name: '张三' }], products);
+  const rows = parseQuickEntry('后腿卷 15箱\n张三 后腿卷 2 公斤', [{ id: 'c', name: '张三' }], products);
   assert.deepEqual(rows.map(r => [r.rawCustomer, r.rawName, r.quantity, r.unit]), [
-    ['', '后腿卷', 15, '箱'], ['张三', '后腿卷', 2.5, '公斤']
+    ['', '后腿卷', 15, '箱'], ['张三', '后腿卷', 2, '公斤']
   ]);
 });
 test('accepts full-width digits, compact quantities, tabs, thousands and CRLF', () => {
@@ -78,4 +78,46 @@ test('Excel rejects missing, zero or partially numeric quantities', () => {
   assert.ok(parsed.slice(0, 3).every(r => r.error));
   assert.equal(parsed[3].quantity, 5);
   assert.equal(parsed[3].error, null);
+});
+
+test('fractional quick and Excel quantities remain errors without rounding', () => {
+  const [quick] = parseQuickEntry('后腿卷 2.5件', [], products);
+  assert.equal(quick.quantity, 2.5);
+  assert.match(quick.error, /整数/);
+  const { parsed } = parseExcelData([['张三', '后腿卷', 1.01, '件']], [], products);
+  assert.equal(parsed[0].quantity, 1.01);
+  assert.match(parsed[0].error, /整数/);
+});
+
+test('explicit product aliases select the intended brand and keep other brands separate', () => {
+  const catalog = [
+    {id:'san',name:'三胜达后腿卷',unit:'件',aliases:['后腿卷']},
+    {id:'he',name:'合胜源后腿卷',unit:'件',aliases:[]}
+  ];
+  const resolved = resolveProducts(parseQuickEntry('后腿卷 15件\n合胜源后腿卷 20件', [], catalog), catalog);
+  assert.deepEqual(resolved.map(row=>row.product.id), ['san','he']);
+  assert.ok(resolved.every(row=>!row.needCreate));
+  assert.equal(findProduct('后腿', catalog), null);
+  const ambiguous = [...catalog, {id:'other',name:'其他后腿卷',unit:'件',aliases:['后腿卷']}];
+  const [row] = resolveProducts(parseQuickEntry('后腿卷 2件', [], ambiguous), ambiguous);
+  assert.match(row.parsed.error, /多个商品/);
+  assert.equal(row.needCreate, false);
+});
+
+test('customer regions may swap around commas and known aisle addresses may be omitted', () => {
+  const customers = [
+    {id:'lin',name:'临漳小宋车'}, {id:'ci',name:'小宋车磁县'},
+    {id:'hai',name:'海洋金庭3排25号'}, {id:'other',name:'海洋西排39号'}
+  ];
+  assert.equal(findCustomer('小宋车，临漳', customers).id, 'lin');
+  assert.equal(findCustomer('磁县，小宋车', customers).id, 'ci');
+  assert.equal(findCustomer('海洋，金庭', customers).id, 'hai');
+  assert.equal(findCustomer('海洋', customers), null);
+  const parsed = parseQuickEntry('海洋，金庭\n后腿卷 3件', customers, products);
+  assert.equal(parsed[0].customer.id, 'hai');
+  assert.equal(parsed[0].rawCustomer, '海洋金庭3排25号');
+  const duplicates = [...customers, {id:'hai2',name:'海洋金庭5排10号'}];
+  assert.equal(matchingCustomers('海洋，金庭', duplicates).length, 2);
+  assert.match(parseQuickEntry('海洋，金庭\n后腿卷 3件', duplicates, products)[0].error, /多个客户/);
+  assert.equal(findCustomer('海洋金庭3排25号', duplicates).id, 'hai');
 });

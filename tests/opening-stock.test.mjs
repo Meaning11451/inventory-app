@@ -46,6 +46,7 @@ test('missing quantities stay missing and precision is validated', () => {
   const { items } = parseOpeningStock([headings, [1, '', '甲', '件', ''], [2, '', '乙', '件', '1,000.25'], [3, '', '丙', '件', '1.234']]);
   assert.equal(items[0].quantity, null);
   assert.equal(items[1].quantity, 1000.25);
+  assert.ok(openingRowErrors(items[1]).some(error=>error.includes('整数')));
   assert.ok(openingRowErrors(items[2]).length);
 });
 test('blocks duplicate goods, ambiguous existing names and incompatible units', async () => {

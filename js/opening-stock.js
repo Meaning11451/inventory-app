@@ -25,7 +25,8 @@ export function openingRowErrors(row) {
   if (!String(row.name ?? '').trim()) errors.push('请填写商品名称');
   if (!String(row.unit ?? '').trim()) errors.push('请填写单位');
   if (row.quantity === null || !Number.isFinite(row.quantity)) errors.push('库存数量必须是数字，空白不视为零');
-  else if (Math.abs(row.quantity) > 9999999999.99 || Math.abs(row.quantity * 100 - Math.round(row.quantity * 100)) > 0.0001) errors.push('库存数量最多保留两位小数，且不能超过 99 亿');
+  else if (!Number.isSafeInteger(row.quantity)) errors.push('库存数量必须是整数');
+  else if (Math.abs(row.quantity) > 9999999999) errors.push('库存数量过大');
   return errors;
 }
 

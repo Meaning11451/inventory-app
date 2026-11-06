@@ -97,3 +97,65 @@ test('selecting another Excel file discards an older read that completes later',
  release([['客户名','电话','备注'],['旧文件客户','','']]);await old;
  assert.match(h.byId('customerExcelPreview').textContent,/新文件客户/);assert.doesNotMatch(h.byId('customerExcelPreview').textContent,/旧文件客户/);
 });
+
+test('stock total covers the whole ledger during search and clears stale totals on failure', async t=>{
+ const h=await harness();t.after(h.close);
+ h.products.push({id:'p2',name:'另一商品',unit:'件',spec:''});
+ h.inbound.push({id:'r1',product_id:'p1',quantity:8},{id:'r2',product_id:'p2',quantity:2});
+ h.outbound.push({id:'r3',product_id:'p1',quantity:3});
+ await h.win.renderStock();
+ assert.match(h.byId('stockSummary').textContent,/总库存7件/);
+ assert.match(h.byId('stockSummary').textContent,/共 2 个商品/);
+ h.byId('stockSearch').value='不存在';await h.win.renderStock();
+ assert.match(h.byId('stockSummary').textContent,/总库存7件/);
+ assert.match(h.byId('stockSummary').textContent,/找到 0 个/);
+ h.api.fetchCurrentStock=async()=>{throw Error('network down');};await h.win.renderStock();
+ assert.match(h.byId('stockSummary').textContent,/暂时无法读取/);
+ assert.doesNotMatch(h.byId('stockSummary').textContent,/7件/);
+});
+
+test('inventory totals keep unlike units separate and include negative balances', async t=>{
+ const h=await harness();t.after(h.close);
+ h.products.push({id:'p2',name:'公斤商品',unit:'公斤',spec:''});
+ h.outbound.push({id:'r1',product_id:'p1',quantity:3});
+ h.inbound.push({id:'r2',product_id:'p2',quantity:2});
+ await h.win.renderStock();
+ assert.match(h.byId('stockSummary').textContent,/-3件.*2公斤/);
+});
+
+test('alias and reordered or shortened customers reuse original records through preview and save', async t=>{
+ const h=await harness();t.after(h.close);
+ Object.assign(h.products[0],{name:'三胜达后腿卷',aliases:['后腿卷']});
+ h.products.push({id:'p2',name:'合胜源后腿卷',unit:'件',spec:''});
+ h.customers.push({id:'lin',name:'临漳小宋车'},{id:'hai',name:'海洋金庭3排25号'});
+ h.byId('outboundQuickText').value='小宋车，临漳\n后腿卷 3件\n海洋，金庭\n合胜源后腿卷 2件';
+ await h.win.handleOutboundQuickParse();
+ const names=[...h.byId('outboundParsePreview').querySelectorAll('.ep-name')].map(input=>input.value);
+ assert.deepEqual(names,['三胜达后腿卷','合胜源后腿卷']);
+ assert.match(h.byId('outboundParsePreview').querySelector('.ep-customer').value,/临漳小宋车/);
+ await h.win.handleOutboundQuickSubmit();
+ assert.deepEqual(h.outbound.map(row=>[row.product_id,row.customer_id,row.quantity]),[['p1','lin',3],['p2','hai',2]]);
+ assert.equal(h.products.length,2);assert.equal(h.customers.length,2);
+});
+
+test('ambiguous customer addresses stop the batch before creating any product or customer', async t=>{
+ const h=await harness();t.after(h.close);
+ h.customers.push({id:'a',name:'海洋金庭3排25号'},{id:'b',name:'海洋金庭5排10号'});
+ h.byId('outboundQuickText').value='海洋，金庭\n新商品 3件';
+ await h.win.handleOutboundQuickParse();await h.win.handleOutboundQuickSubmit();
+ assert.equal(h.products.length,1);assert.equal(h.customers.length,2);assert.equal(h.outbound.length,0);
+ assert.match(h.byId('outboundQuickText').value,/海洋/);
+});
+
+test('all quantity controls step by one and fractional edits cannot partially update products', async t=>{
+ const h=await harness();t.after(h.close);
+ for(const id of ['inboundQty','outboundQty','quickInQty','quickOutQty','productModalAdjustQty'])
+   assert.equal(h.byId(id).getAttribute('step'),'1');
+ await h.win.renderInboundForm();h.byId('inboundProduct').value='p1';h.byId('inboundQty').value='1.5';
+ await h.win.handleInboundSubmit(event);assert.equal(h.inbound.length,0);
+ await h.win.renderOutboundForm();h.byId('outboundProduct').value='p1';h.byId('outboundQty').value='1.5';
+ await h.win.handleOutboundSubmit(event);assert.equal(h.outbound.length,0);
+ await h.win.openEditModal('p1');h.byId('productModalName').value='不应保存的改名';h.byId('productModalAdjustQty').value='2.5';
+ await h.win.handleProductSave();
+ assert.equal(h.products[0].name,'后腿卷');assert.equal(h.inbound.length,0);assert.equal(h.outbound.length,0);
+});
