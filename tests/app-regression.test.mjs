@@ -222,3 +222,25 @@ test('daily Excel also chooses only existing products',async t=>{
  await h.win.handleInboundExcelSubmit();
  assert.equal(h.products.length,1);assert.equal(h.inbound[0].quantity,4);assert.equal(h.inbound[0].product_id,'p1');
 });
+
+test('the pasted chat order previews and saves all three existing products despite trailing commas',async t=>{
+ const h=await harness();t.after(h.close);
+ h.products.push(
+  {id:'snow',name:'谷饲雪花',aliases:['雪花'],unit:'件',spec:''},
+  {id:'180',name:'精选180',aliases:['180','180卷'],unit:'件',spec:''},
+  {id:'five',name:'五斤三号',aliases:['5斤三号'],unit:'件',spec:''},
+  {id:'other180',name:'牧倍尔精选180',aliases:[],unit:'件',spec:''}
+ );
+ h.customers.push({id:'jie',name:'杰子'});
+ h.byId('outboundQuickText').value='杰子\n雪花    4件，\n180卷 12件，\n5斤三号8件';
+ await h.win.handleOutboundQuickParse();
+ const rows=[...h.byId('outboundParsePreview').querySelectorAll('tbody tr')];
+ assert.deepEqual(rows.map(row=>[row.querySelector('.ep-product').value,row.querySelector('.ep-qty').value,row.querySelector('.ep-customer').value]),[
+  ['snow','4','杰子'],['180','12','杰子'],['five','8','杰子']
+ ]);
+ assert.ok(rows.every(row=>row.querySelector('.ep-status').textContent==='已匹配'));
+ assert.equal(h.outbound.length,0);
+ await h.win.handleOutboundQuickSubmit();
+ assert.deepEqual(h.outbound.map(row=>[row.product_id,row.customer_id,row.quantity]),[['snow','jie',4],['180','jie',12],['five','jie',8]]);
+ assert.equal(h.products.length,5);assert.equal(h.customers.length,1);
+});

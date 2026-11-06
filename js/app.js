@@ -4,7 +4,7 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers } from './parser.js';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers } from './parser.js?v=20';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';

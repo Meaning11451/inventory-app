@@ -8,8 +8,17 @@ export function matchingProducts(name, products = []) {
   const key=nameKey(name);
   if (!key) return [];
   const exact = products.filter(product=>nameKey(product.name)===key);
-  return exact.length ? exact : products.filter(product =>
+  if (exact.length) return exact;
+  const aliases = products.filter(product =>
     Array.isArray(product.aliases) && product.aliases.some(alias=>nameKey(alias)===key));
+  if (aliases.length) return aliases;
+  // Chat orders may append 卷 to an existing name or alias. Keep brand and weight;
+  // never remove a meaningful form such as 砖 or guess an arbitrary substring.
+  if (!key.endsWith('卷')) return [];
+  const base = key.slice(0, -1);
+  if (!base || /[卷砖块]$/.test(base)) return [];
+  return products.filter(product => nameKey(product.name) === base ||
+    (Array.isArray(product.aliases) && product.aliases.some(alias=>nameKey(alias)===base)));
 }
 export function findProduct(name, products = []) {
   const matches=matchingProducts(name,products);
@@ -43,8 +52,8 @@ export function findCustomer(name, customers = []) {
 }
 
 function parseProductLine(text, products) {
-  if (findProduct(text, products)) return null;
-  const line = normalizeDigits(text);
+  const line = normalizeDigits(text).replace(/[\s，,、;；。]+$/, '');
+  if (findProduct(line, products)) return null;
   const patterns = [
     new RegExp(`^(.+?)(?:\\s+|[，,:：]\\s*)(${QUANTITY})\\s*(${UNITS})?\\s*$`, 'i'),
     new RegExp(`^(.+?)(${QUANTITY})\\s*(${UNITS})\\s*$`, 'i'),

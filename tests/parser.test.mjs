@@ -139,3 +139,44 @@ test('the confirmed shorthand names select different existing catalog items with
   assert.deepEqual(rows.map(row=>row.product?.id),['yi','snow','calcium','five','three','brick','japan']);
   assert.ok(rows.every(row=>!row.needCreate&&!row.needsSelection));
 });
+
+test('chat order punctuation keeps all three products and quantities in the customer group', () => {
+  const catalog = [
+    {id:'snow',name:'谷饲雪花',aliases:['雪花'],unit:'件'},
+    {id:'180',name:'精选180',aliases:['180','180卷'],unit:'件'},
+    {id:'five',name:'五斤三号',aliases:['5斤三号'],unit:'件'},
+    {id:'other180',name:'牧倍尔精选180',aliases:[],unit:'件'}
+  ];
+  const input='杰子\n雪花    4件，\n180卷 12件，\n5斤三号8件';
+  const rows=resolveProducts(parseQuickEntry(input,[{id:'jie',name:'杰子'}],catalog),catalog);
+  assert.deepEqual(rows.map(row=>[row.parsed.rawCustomer,row.product?.id,row.parsed.quantity,row.parsed.error]),[
+    ['杰子','snow',4,null],['杰子','180',12,null],['杰子','five',8,null]
+  ]);
+  assert.equal(rows[0].parsed.rawLine,'雪花    4件，');
+});
+
+test('trailing chat punctuation preserves thousands, integer validation and numeric SKU guards', () => {
+  const rows=parseQuickEntry('后腿卷 1,000件，\n后腿卷 2件,\n后腿卷 3件。\n后腿卷 4件；\n后腿卷 5件、\n后腿卷 6件， ；\n后腿卷 2.5件，\n后腿卷 -3件，\n型号1234567，',[],products);
+  assert.deepEqual(rows.slice(0,6).map(row=>[row.quantity,row.error]),[[1000,null],[2,null],[3,null],[4,null],[5,null],[6,null]]);
+  assert.equal(rows[6].quantity,2.5);assert.match(rows[6].error,/整数/);
+  assert.equal(rows[7].quantity,-3);assert.match(rows[7].error,/整数/);
+  assert.equal(rows[8].quantity,null);assert.ok(rows[8].error);
+});
+
+test('optional roll wording reuses known names and aliases while keeping weights and brands distinct', () => {
+  const catalog=[
+    {id:'180',name:'精选180',aliases:['180'],unit:'件'},
+    {id:'other180',name:'牧倍尔精选180',aliases:[],unit:'件'},
+    {id:'three',name:'三号',aliases:[],unit:'件'},
+    {id:'five',name:'五斤三号',aliases:['5斤三号'],unit:'件'},
+    {id:'calcium',name:'高钙',aliases:[],unit:'件'},
+    {id:'fiveCalcium',name:'五斤高钙',aliases:['5斤高钙'],unit:'件'}
+  ];
+  const inputs=['180卷','精选180卷','牧倍尔精选180卷','三号卷','5斤三号卷','高钙卷','5斤高钙卷'];
+  assert.deepEqual(inputs.map(name=>findProduct(name,catalog)?.id),['180','180','other180','three','five','calcium','fiveCalcium']);
+  assert.equal(findProduct('精选',catalog),null);
+  const exact=[...catalog,{id:'literal',name:'180卷',aliases:[],unit:'件'}];
+  assert.equal(findProduct('180卷',exact).id,'literal');
+  const ambiguous=[...catalog,{id:'duplicate',name:'另一180',aliases:['180'],unit:'件'}];
+  assert.equal(findProduct('180卷',ambiguous),null);
+});
