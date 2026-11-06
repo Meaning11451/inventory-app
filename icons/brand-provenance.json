@@ -1,0 +1,8 @@
+{
+  "tool": "image_gen.imagegen",
+  "identity": "三胜达",
+  "reference": "User-supplied storefront sign; only the brand badge and green palette were used.",
+  "prompt_file": "brand-prompt.txt",
+  "output": "icon-512x512.png",
+  "processing": "Generated artwork resized with Sharp; separate padded maskable icon. Original high-resolution artwork is retained in the local project .impeccable/assets/brand-master.png. Phone numbers and address are excluded."
+}

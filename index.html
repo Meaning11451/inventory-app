@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#6c5ce7">
+  <meta name="theme-color" content="#155b36">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="进销存">
-  <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
-  <title>进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=13">
+  <meta name="apple-mobile-web-app-title" content="三胜达库存">
+  <link rel="manifest" href="./manifest.json?v=14">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180x180.png?v=14">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png?v=14">
+  <title>三胜达进销存</title>
+  <link rel="stylesheet" href="./css/style.css?v=14">
 </head>
 <body>
 
@@ -19,7 +20,10 @@
 
   <!-- 顶栏 -->
   <header class="app-header">
-    <h1 id="headerTitle">进销存</h1>
+    <div class="header-brand">
+      <img class="brand-icon" src="./icons/icon-192x192.png?v=14" width="40" height="40" alt="">
+      <div class="header-brand-copy"><span class="header-brand-name">三胜达</span><h1 id="headerTitle">进销存</h1></div>
+    </div>
     <div class="header-actions">
       <button id="installApp" class="install-button" type="button" hidden>添加到桌面</button>
       <span id="syncStatus" class="sync-status online" title="同步状态">🟢 在线</span>
@@ -316,6 +320,10 @@
 
   <!-- 底部导航 -->
   <nav class="tab-bar">
+    <div class="nav-brand" aria-label="三胜达进销存">
+      <img src="./icons/icon-192x192.png?v=14" width="40" height="40" alt="">
+      <div><strong>三胜达</strong><span>进销存管理</span></div>
+    </div>
     <button class="tab-item active" data-tab="dashboard">
       <span class="tab-icon">📊</span>首页
     </button>
@@ -412,6 +420,6 @@
   <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=13"></script>
+  <script type="module" src="./js/app.js?v=14"></script>
 </body>
 </html>

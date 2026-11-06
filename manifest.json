@@ -1,24 +1,31 @@
 {
-  "name": "进销存管理系统",
-  "short_name": "进销存",
-  "description": "个人进销存管理",
+  "name": "三胜达进销存",
+  "short_name": "三胜达库存",
+  "description": "三胜达商品、客户与进出库管理",
   "start_url": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f8fafc",
-  "theme_color": "#6c5ce7",
+  "background_color": "#f5f7f5",
+  "theme_color": "#155b36",
   "icons": [
     {
-      "src": "./icons/icon-192x192.png",
+      "src": "./icons/icon-192x192.png?v=14",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "./icons/icon-512x512.png",
+      "src": "./icons/icon-512x512.png?v=14",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512x512.png?v=14",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "id": "./"
 }

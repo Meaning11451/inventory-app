@@ -82,6 +82,7 @@ async function switchTab(tabName) {
     outbound: '出库', customers: '客户', records: '记录'
   };
   document.getElementById('headerTitle').textContent = titles[tabName] || '进销存';
+  document.title = tabName === 'dashboard' ? '三胜达进销存' : `${titles[tabName] || '进销存'} · 三胜达进销存`;
 
   await refreshCurrentTab();
 }
@@ -340,11 +341,11 @@ async function renderStock() {
             <div class="qty-num ${qtyClass}">${formatNum(item.stock_qty)}</div>
             <div class="qty-unit">${escapeHtml(item.unit)}</div>
           </div>
-          <div style="display:flex;gap:4px;margin-left:8px;">
-            <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📥</button>
-            <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}">📤</button>
-            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" title="编辑">✏️</button>
-            <button class="btn btn-sm btn-danger stock-del" data-id="${item.id}" data-name="${escapeHtml(item.name)}" title="删除">🗑️</button>
+          <div class="stock-card-actions">
+            <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="入库：${escapeHtml(item.name)}" title="入库"><span class="stock-action-icon" aria-hidden="true">📥</span><span class="stock-action-label" aria-hidden="true">入库</span></button>
+            <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="出库：${escapeHtml(item.name)}" title="出库"><span class="stock-action-icon" aria-hidden="true">📤</span><span class="stock-action-label" aria-hidden="true">出库</span></button>
+            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" aria-label="编辑：${escapeHtml(item.name)}" title="编辑"><span class="stock-action-icon" aria-hidden="true">✏️</span><span class="stock-action-label" aria-hidden="true">编辑</span></button>
+            <button class="btn btn-sm btn-danger stock-del" data-id="${item.id}" data-name="${escapeHtml(item.name)}" aria-label="删除：${escapeHtml(item.name)}" title="删除"><span class="stock-action-icon" aria-hidden="true">🗑️</span><span class="stock-action-label" aria-hidden="true">删除</span></button>
           </div>
         </div>
       `;
