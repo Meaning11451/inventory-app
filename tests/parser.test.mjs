@@ -24,7 +24,8 @@ test('different brands never match by substring', () => {
   const rows = resolveProducts(parseQuickEntry(example, [], products), products);
   assert.equal(rows[0].product.id, 'plain');
   assert.equal(rows[1].product, null);
-  assert.equal(rows[1].needCreate, true);
+  assert.equal(rows[1].needCreate, false);
+  assert.equal(rows[1].needsSelection, true);
   assert.equal(rows[4].product, null);
   assert.equal(findProduct('后腿', products), null);
 });
@@ -100,7 +101,8 @@ test('explicit product aliases select the intended brand and keep other brands s
   assert.equal(findProduct('后腿', catalog), null);
   const ambiguous = [...catalog, {id:'other',name:'其他后腿卷',unit:'件',aliases:['后腿卷']}];
   const [row] = resolveProducts(parseQuickEntry('后腿卷 2件', [], ambiguous), ambiguous);
-  assert.match(row.parsed.error, /多个商品/);
+  assert.equal(row.needsSelection, true);
+  assert.equal(row.product, null);
   assert.equal(row.needCreate, false);
 });
 
@@ -120,4 +122,20 @@ test('customer regions may swap around commas and known aisle addresses may be o
   assert.equal(matchingCustomers('海洋，金庭', duplicates).length, 2);
   assert.match(parseQuickEntry('海洋，金庭\n后腿卷 3件', duplicates, products)[0].error, /多个客户/);
   assert.equal(findCustomer('海洋金庭3排25号', duplicates).id, 'hai');
+});
+
+test('the confirmed shorthand names select different existing catalog items without merging 三号', () => {
+  const catalog=[
+    {id:'yi',name:'三胜达一号',aliases:['一号','1号'],unit:'件'},
+    {id:'snow',name:'谷饲雪花',aliases:['雪花'],unit:'件'},
+    {id:'calcium',name:'五斤高钙',aliases:['5斤高钙'],unit:'件'},
+    {id:'five',name:'五斤三号',aliases:['5斤三号'],unit:'件'},
+    {id:'three',name:'三号',aliases:[],unit:'件'},
+    {id:'brick',name:'5斤后腿砖',aliases:['后腿肉砖','五斤后腿砖'],unit:'件'},
+    {id:'japan',name:'日式一号',aliases:[],unit:'件'}
+  ];
+  const input='一号 2件\n雪花 3件\n5斤高钙 4件\n5斤三号 5件\n三号 6件\n后腿肉砖 7件\n日式一号 8件';
+  const rows=resolveProducts(parseQuickEntry(input,[],catalog),catalog);
+  assert.deepEqual(rows.map(row=>row.product?.id),['yi','snow','calcium','five','three','brick','japan']);
+  assert.ok(rows.every(row=>!row.needCreate&&!row.needsSelection));
 });

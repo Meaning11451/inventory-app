@@ -130,7 +130,7 @@ test('alias and reordered or shortened customers reuse original records through 
  h.customers.push({id:'lin',name:'临漳小宋车'},{id:'hai',name:'海洋金庭3排25号'});
  h.byId('outboundQuickText').value='小宋车，临漳\n后腿卷 3件\n海洋，金庭\n合胜源后腿卷 2件';
  await h.win.handleOutboundQuickParse();
- const names=[...h.byId('outboundParsePreview').querySelectorAll('.ep-name')].map(input=>input.value);
+ const names=[...h.byId('outboundParsePreview').querySelectorAll('.ep-product')].map(select=>select.selectedOptions[0].dataset.name);
  assert.deepEqual(names,['三胜达后腿卷','合胜源后腿卷']);
  assert.match(h.byId('outboundParsePreview').querySelector('.ep-customer').value,/临漳小宋车/);
  await h.win.handleOutboundQuickSubmit();
@@ -158,4 +158,67 @@ test('all quantity controls step by one and fractional edits cannot partially up
  await h.win.openEditModal('p1');h.byId('productModalName').value='不应保存的改名';h.byId('productModalAdjustQty').value='2.5';
  await h.win.handleProductSave();
  assert.equal(h.products[0].name,'后腿卷');assert.equal(h.inbound.length,0);assert.equal(h.outbound.length,0);
+});
+
+test('unknown shortcut products require selection and never create a product',async t=>{
+ const h=await harness();t.after(h.close);h.win.initEntryPreviewGuards();
+ h.byId('outboundQuickText').value='新客户\n陌生商品 5件';
+ await h.win.handleOutboundQuickParse();
+ const select=h.byId('outboundParsePreview').querySelector('.ep-product');
+ assert.equal(select.value,'');
+ assert.match(h.byId('outboundParsePreview').textContent,/请选择商品/);
+ assert.doesNotMatch(h.byId('outboundParsePreview').textContent,/待新建/);
+ await h.win.handleOutboundQuickSubmit();
+ assert.equal(h.products.length,1);assert.equal(h.customers.length,0);assert.equal(h.outbound.length,0);
+ select.value='p1';select.dispatchEvent(new h.win.Event('change',{bubbles:true}));
+ assert.match(h.byId('outboundParsePreview').querySelector('.ep-status').textContent,/已选择/);
+ await h.win.handleOutboundQuickSubmit();
+ assert.equal(h.products.length,1);assert.equal(h.outbound[0].product_id,'p1');assert.equal(h.outbound[0].quantity,5);
+});
+
+test('changing a preview product keeps the customer and count and updates the selected unit',async t=>{
+ const h=await harness();t.after(h.close);h.win.initEntryPreviewGuards();
+ h.products.push({id:'p2',name:'另一商品',unit:'公斤',spec:'大包'});
+ h.customers.push({id:'c1',name:'测试客户'});
+ h.byId('inboundQuickText').value='测试客户\n后腿卷 8件';
+ await h.win.handleInboundQuickParse();
+ const row=h.byId('inboundParsePreview').querySelector('tbody tr');
+ const select=row.querySelector('.ep-product');select.value='p2';select.dispatchEvent(new h.win.Event('change',{bubbles:true}));
+ assert.equal(row.querySelector('.ep-customer').value,'测试客户');
+ assert.equal(row.querySelector('.ep-qty').value,'8');assert.equal(row.querySelector('.ep-unit').value,'公斤');
+ await h.win.handleInboundQuickSubmit();
+ assert.equal(h.inbound[0].product_id,'p2');assert.equal(h.inbound[0].customer_id,'c1');assert.equal(h.inbound[0].quantity,8);
+});
+
+test('ambiguous product specifications can be resolved by selecting the actual product ID',async t=>{
+ const h=await harness();t.after(h.close);h.win.initEntryPreviewGuards();
+ h.products.push({id:'p2',name:'后腿卷',spec:'大箱',unit:'件'});
+ h.byId('inboundQuickText').value='后腿卷 2件';await h.win.handleInboundQuickParse();
+ const select=h.byId('inboundParsePreview').querySelector('.ep-product');
+ assert.equal(select.value,'');
+ assert.match(select.textContent,/大箱/);
+ select.value='p2';select.dispatchEvent(new h.win.Event('change',{bubbles:true}));
+ await h.win.handleInboundQuickSubmit();
+ assert.equal(h.inbound[0].product_id,'p2');assert.equal(h.products.length,2);
+});
+
+test('a deleted selected product cannot be recreated during a retry',async t=>{
+ const h=await harness();t.after(h.close);
+ h.byId('inboundQuickText').value='后腿卷 2件';await h.win.handleInboundQuickParse();
+ h.products.splice(0);await h.win.handleInboundQuickSubmit();
+ assert.equal(h.products.length,0);assert.equal(h.inbound.length,0);
+ assert.match(h.byId('inboundQuickText').value,/后腿卷/);
+ assert.match(h.byId('toastContainer').textContent,/已不在商品资料/);
+});
+
+test('daily Excel also chooses only existing products',async t=>{
+ const h=await harness();t.after(h.close);h.win.initEntryPreviewGuards();
+ h.win.readExcelFile=async()=>[['客户','商品','数量','单位'],['','未知商品',4,'件']];
+ await h.win.handleInboundExcelImport({target:{files:[{}]}});
+ await h.win.handleInboundExcelSubmit();
+ assert.equal(h.products.length,1);assert.equal(h.inbound.length,0);
+ const select=h.byId('inboundExcelPreview').querySelector('.ep-product');
+ select.value='p1';select.dispatchEvent(new h.win.Event('change',{bubbles:true}));
+ await h.win.handleInboundExcelSubmit();
+ assert.equal(h.products.length,1);assert.equal(h.inbound[0].quantity,4);assert.equal(h.inbound[0].product_id,'p1');
 });

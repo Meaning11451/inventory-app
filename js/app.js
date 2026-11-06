@@ -621,21 +621,28 @@ function collectEditablePreview(containerId) {
   const rows = [...document.getElementById(containerId).querySelectorAll('tbody tr')];
   const items = [];
   for (const [index, row] of rows.entries()) {
-    const nameInput = row.querySelector('.ep-name');
+    const nameInput = row.querySelector('.ep-product');
     const qtyInput = row.querySelector('.ep-qty');
-    const rawName = nameInput.value.trim();
+    const productId = nameInput.value;
+    const rawName = nameInput.selectedOptions[0]?.dataset.name || '';
     const quantity = Number(qtyInput.value);
-    if (!rawName || !validDailyQuantity(quantity)) {
+    if (!productId) {
       row.classList.add('row-error');
-      const invalid = !rawName ? nameInput : qtyInput;
-      invalid.setAttribute('aria-invalid', 'true');
-      invalid.focus();
-      showToast(`第 ${index + 1} 行的商品名或数量有误，请更正或移除这一行`, 'warning');
+      nameInput.setAttribute('aria-invalid', 'true');
+      nameInput.focus();
+      showToast(`第 ${index + 1} 行请选择已有商品；新商品请先在库存中添加`, 'warning');
+      return null;
+    }
+    if (!validDailyQuantity(quantity)) {
+      row.classList.add('row-error');
+      qtyInput.setAttribute('aria-invalid', 'true');
+      qtyInput.focus();
+      showToast(`第 ${index + 1} 行请输入大于 0 的整数数量`, 'warning');
       return null;
     }
     const rawCustomer = row.querySelector('.ep-customer').value.trim();
     const sameCustomer = findCustomer(rawCustomer, [{ name: row.dataset.customer || '' }]);
-    items.push({ rawCustomer, rawName, quantity, unit: row.querySelector('.ep-unit').value.trim(), phone: sameCustomer ? row.dataset.phone || '' : '' });
+    items.push({ productId, rawCustomer, rawName, quantity, unit: row.querySelector('.ep-unit').value.trim(), phone: sameCustomer ? row.dataset.phone || '' : '' });
   }
   return items;
 }
@@ -647,11 +654,14 @@ function initEntryPreviewGuards() {
       document.getElementById(`${direction}QuickSubmit`).style.display = 'none';
     });
     for (const previewId of [`${direction}ParsePreview`, `${direction}ExcelPreview`]) {
-      document.getElementById(previewId).addEventListener('input', event => {
+      const preview = document.getElementById(previewId);
+      const onEdit = event => {
         event.target.removeAttribute('aria-invalid');
         const row = event.target.closest('tr');
-        if (row && row.querySelector('.ep-name').value.trim() && validDailyQuantity(Number(row.querySelector('.ep-qty').value))) row.classList.remove('row-error');
-      });
+        if (row) updateEntryPreviewRow(row, event.target.matches('.ep-product'));
+      };
+      preview.addEventListener('input', onEdit);
+      preview.addEventListener('change', onEdit);
     }
   }
 }
@@ -736,20 +746,16 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
     const [products, customers] = await Promise.all([loadProducts(true), loadCustomers(true)]);
     const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
     for (const item of editedItems) {
-      if (matchingProducts(item.rawName,products).length > 1) throw new Error(`「${item.rawName}」有多个规格，请使用表单选择具体商品`);
       if (matchingCustomers(item.rawCustomer,customers).length > 1) throw new Error(`「${item.rawCustomer}」对应多个客户，请补充完整名称或地址`);
-      const product = findProduct(item.rawName, products);
+      const product = products.find(product=>product.id===item.productId);
+      if (!product) throw new Error(`「${item.rawName}」已不在商品资料中，请重新解析并选择已有商品`);
       if (product && item.unit && unitKey(item.unit) !== unitKey(product.unit)) {
         throw new Error(`「${product.name}」的单位是「${product.unit}」，请核对数量并将单位改为「${product.unit}」`);
       }
     }
     const records = [];
     for (const item of editedItems) {
-      let product = findProduct(item.rawName, products);
-      if (!product) {
-        product = await DB.createProduct({ name: item.rawName, unit: item.unit || '件' });
-        products.push(product);
-      }
+      const product = products.find(product=>product.id===item.productId);
       let customer = findCustomer(item.rawCustomer, customers);
       if (item.rawCustomer && !customer) {
         customer = await DB.createCustomer({ name: item.rawCustomer, phone: item.phone, note: '' });
@@ -1099,7 +1105,30 @@ async function handleCustomerSaveCore() {
 
 // ==================== 解析预览 ====================
 
+function updateEntryPreviewRow(row, productChanged = false) {
+  const select = row.querySelector('.ep-product');
+  const unitInput = row.querySelector('.ep-unit');
+  const selected = select.selectedOptions[0];
+  if (productChanged && select.value) unitInput.value = selected.dataset.unit || '件';
+  const missing = !select.value;
+  const invalidQty = !validDailyQuantity(Number(row.querySelector('.ep-qty').value));
+  const ambiguousCustomer = matchingCustomers(row.querySelector('.ep-customer').value, getState('customers') || []).length > 1;
+  const unitKey = value => ({kg:'公斤','千克':'公斤',g:'克'})[value.toLowerCase()] || value;
+  const invalidUnit = !missing && Boolean(unitInput.value.trim()) && unitKey(unitInput.value.trim()) !== unitKey(selected.dataset.unit || '件');
+  const invalid = missing || invalidQty || ambiguousCustomer || invalidUnit;
+  row.classList.toggle('row-error', invalid);
+  row.classList.toggle('row-matched', !invalid);
+  row.classList.remove('row-new');
+  const badge = row.querySelector('.ep-status');
+  badge.className = `badge ep-status badge-${invalid ? 'danger' : 'success'}`;
+  badge.textContent = missing ? '请选择商品' : invalidQty ? '数量需整数' : ambiguousCustomer ? '客户需核对' : invalidUnit ? '单位需核对' : '已选择';
+  badge.title = '';
+}
+
 function renderParsePreview(containerId, resolved) {
+  const products = [...(getState('products') || [])].sort((a,b) =>
+    (a.display_order == null ? Infinity : Number(a.display_order)) - (b.display_order == null ? Infinity : Number(b.display_order)) ||
+    a.name.localeCompare(b.name,'zh-CN'));
   const direction = containerId.startsWith('inbound') ? 'inbound' : 'outbound';
   const isExcel = containerId.includes('Excel');
   const button = document.getElementById(`${direction}${isExcel ? 'Excel' : 'Quick'}Submit`);
@@ -1109,18 +1138,20 @@ function renderParsePreview(containerId, resolved) {
     return;
   }
   document.getElementById(containerId).innerHTML = `
-    <p class="preview-summary" role="status">识别到 ${resolved.length} 条商品记录。请核对客户、商品和数量后保存；不同品牌不会合并。</p>
+    <p class="preview-summary" role="status">识别到 ${resolved.length} 条商品记录。商品可以下拉改选；未匹配的请先选择，新商品请先在库存中添加。</p>
     <div class="editable-preview"><table>
       <thead><tr><th>客户</th><th>商品</th><th>数量</th><th>单位</th><th>状态</th><th></th></tr></thead>
       <tbody>${resolved.map((item, index) => {
         const parsed = item.parsed;
-        const status = parsed.error ? ['需更正', 'danger', 'row-error'] : item.needCreate ? ['待新建', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
+        const status = parsed.error ? ['需更正', 'danger', 'row-error'] : !item.product ? ['请选择商品', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
+        const options = products.map(product => `<option value="${escapeHtml(product.id)}" data-name="${escapeHtml(product.name)}" data-unit="${escapeHtml(product.unit || '件')}" ${product.id === item.product?.id ? 'selected' : ''}>${escapeHtml(product.name)}${product.spec ? ' · ' + escapeHtml(product.spec) : ''} · ${escapeHtml(product.unit || '件')}</option>`).join('');
+        const original = !item.product || item.product.name !== parsed.rawName ? `<small class="ep-source">原文：${escapeHtml(parsed.rawName)}</small>` : '';
         return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
           <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户（可选）"></td>
-          <td><input class="ep-input ep-name" aria-label="第 ${index + 1} 行商品" value="${escapeHtml(item.product?.name || parsed.rawName)}" placeholder="商品名"></td>
+          <td><select class="ep-input ep-name ep-product" aria-label="第 ${index + 1} 行商品"><option value="">请选择已有商品</option>${options}</select>${original}</td>
           <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="1" inputmode="numeric" min="1"></td>
           <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>
-          <td><span class="badge badge-${status[1]}" title="${escapeHtml(parsed.error || '')}">${status[0]}</span></td>
+          <td><span class="badge ep-status badge-${status[1]}" title="${escapeHtml(parsed.error || '')}">${status[0]}</span></td>
           <td><button class="btn btn-sm btn-danger ep-remove" aria-label="移除第 ${index + 1} 行" title="移除这一行">✕</button></td>
         </tr>`;
       }).join('')}</tbody>

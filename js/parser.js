@@ -116,10 +116,9 @@ export function parseQuickEntry(text, customers = [], products = []) {
 
 export function resolveProducts(parsedLines, existingProducts = []) {
   return parsedLines.map(parsed => {
-    const matches = parsed.error ? [] : matchingProducts(parsed.rawName, existingProducts);
-    const checked = matches.length > 1 ? { ...parsed, error: '匹配到多个商品，请填写完整商品名称并核对规格' } : parsed;
-    const product = checked.error ? null : matches[0] || null;
-    return { parsed: checked, product, needCreate: !checked.error && !product, suggestedUnit: parsed.unit || product?.unit || '件' };
+    const matches = matchingProducts(parsed.rawName, existingProducts);
+    const product = matches.length === 1 ? matches[0] : null;
+    return { parsed, product, needCreate: false, needsSelection: !product, suggestedUnit: parsed.unit || product?.unit || '件' };
   });
 }
 
@@ -140,14 +139,14 @@ export function parseExcelData(rows, customers = [], products = []) {
     const priceText = String(row[4] ?? '').trim();
     const customer = findCustomer(customerName, customers);
     const product = findProduct(productName, products);
-    const error = matchingCustomers(customerName, customers).length > 1 ? '客户名称对应多个客户，请补充完整名称或地址' : !productName ? '缺少商品名' : matchingProducts(productName, products).length > 1 ? '匹配到多个商品，请填写完整商品名称并核对规格' : !Number.isSafeInteger(quantity) || quantity <= 0 ? '数量必须是大于 0 的整数' : null;
+    const error = matchingCustomers(customerName, customers).length > 1 ? '客户名称对应多个客户，请补充完整名称或地址' : !Number.isSafeInteger(quantity) || quantity <= 0 ? '数量必须是大于 0 的整数' : null;
     const parsed = {
       rawCustomer: customer?.name || customerName, customer, rawName: productName,
       quantity: Number.isFinite(quantity) ? quantity : null, unit: unit || null,
       lineIndex: index + offset, rawLine: row.join(' | '), error
     };
     resolved.push({
-      parsed, product, customer, needCreate: !error && !product, suggestedUnit: unit || product?.unit || '件',
+      parsed, product, customer, needCreate: false, needsSelection: !product, suggestedUnit: unit || product?.unit || '件',
       unitPrice: priceText && Number.isFinite(Number(priceText)) ? Number(priceText) : null,
       note: String(row[5] ?? '').trim()
     });
