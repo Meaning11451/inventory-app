@@ -342,6 +342,7 @@ async function renderStock() {
       const qtyClass = item.stock_qty > 0 ? 'qty-positive' : item.stock_qty < 0 ? 'qty-negative' : 'qty-zero';
       return `
         <div class="card stock-card" data-product-id="${item.id}">
+          <div class="stock-card-summary">
           <div class="stock-card-emoji"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-stock"></use></svg></div>
           <div class="stock-card-info stock-edit-trigger" data-product-id="${item.id}">
             <div class="stock-card-name">${escapeHtml(item.name)}</div>
@@ -351,7 +352,9 @@ async function renderStock() {
             <div class="qty-num ${qtyClass}">${formatNum(item.stock_qty)}</div>
             <div class="qty-unit">${escapeHtml(item.unit)}</div>
           </div>
-          <div class="stock-card-actions">
+          <button class="stock-toggle" type="button" aria-expanded="false" aria-controls="stock-actions-${item.id}" aria-label="库存操作：${escapeHtml(item.name)}，${formatNum(item.stock_qty)}${escapeHtml(item.unit)}" title="展开商品操作"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+          </div>
+          <div class="stock-card-actions" id="stock-actions-${item.id}">
             <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="入库：${escapeHtml(item.name)}" title="入库"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-inbound"></use></svg></span><span class="stock-action-label" aria-hidden="true">入库</span></button>
             <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="出库：${escapeHtml(item.name)}" title="出库"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-outbound"></use></svg></span><span class="stock-action-label" aria-hidden="true">出库</span></button>
             <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" aria-label="编辑：${escapeHtml(item.name)}" title="编辑"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-edit"></use></svg></span><span class="stock-action-label" aria-hidden="true">编辑</span></button>
@@ -360,6 +363,22 @@ async function renderStock() {
         </div>
       `;
     }).join('');
+
+    container.querySelectorAll('.stock-toggle').forEach(button => {
+      button.addEventListener('click', () => {
+        const card = button.closest('.stock-card');
+        const expanded = button.getAttribute('aria-expanded') !== 'true';
+        for (const other of container.querySelectorAll('.stock-card.is-expanded')) {
+          other.classList.remove('is-expanded');
+          const toggle = other.querySelector('.stock-toggle');
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.title = '展开商品操作';
+        }
+        card.classList.toggle('is-expanded', expanded);
+        button.setAttribute('aria-expanded', String(expanded));
+        button.title = expanded ? '收起商品操作' : '展开商品操作';
+      });
+    });
 
     // 快捷入库/出库按钮事件
     container.querySelectorAll('.stock-quick-in').forEach(btn => {

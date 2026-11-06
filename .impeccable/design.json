@@ -379,8 +379,25 @@
         {
           "file": "quiet-small-phone.jpg",
           "viewport": "320x740"
+        },
+        {
+          "file": "compact-stock-320.jpg",
+          "viewport": "320x739"
+        },
+        {
+          "file": "compact-stock-expanded-320.jpg",
+          "viewport": "320x740"
+        },
+        {
+          "file": "compact-stock-390.jpg",
+          "viewport": "390x844"
+        },
+        {
+          "file": "compact-stock-desktop.jpg",
+          "viewport": "1280x899"
         }
-      ]
+      ],
+      "compactStockConditions": "Edge 模拟视口与模拟账本检查：320px 和 390px 视口中分别完整显示 6 行、8 行商品，页面含 35px 模拟提示条；实际可见行数随屏幕、名称折行和操作展开状态变化。未在实体手机验证，进出库流程仅使用模拟数据。"
     }
   },
   "components": [
@@ -420,7 +437,7 @@
       "name": "业务卡片",
       "kind": "card",
       "refersTo": "card",
-      "description": "白色卡片承载业务名称与规格，不重复品牌标识。",
+      "description": "普通业务卡片以白底承载名称与规格，不重复品牌标识；手机库存另用相连列表，点整行才展开操作，桌面库存仍直接显示操作。",
       "html": "<div class=\"ds-card\"><div class=\"ds-name\">商品名称</div><div class=\"ds-spec\">规格 · 单位</div></div>",
       "css": ".ds-card { background: var(--color-surface, #fff); color: var(--color-text, #2d3436); border: 1px solid var(--color-border, #e4e9e5); border-radius: var(--radius, 12px); padding: 14px 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); font-family: var(--font-sans, sans-serif); transition: all var(--transition, 0.2s); } .ds-card:active { transform: scale(0.985); border-color: var(--color-primary, #155b36); box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)); } .ds-name { font-size: 0.95rem; font-weight: 600; line-height: 1.4; } .ds-spec { margin-top: 2px; font-size: 0.75rem; color: var(--color-text-secondary, #636e72); } @media (min-width: 640px) { .ds-card { padding: 18px 22px; } }"
     },
@@ -480,7 +497,7 @@
     "dos": [
       "**Do** 以宋体“三胜达”、事实描述“火锅牛羊肉”和统一线性 SVG 图标建立识别，徽记保持辅助尺寸。",
       "**Do** 保留白色卡片、业务信息层级、语义状态色和现有操作文案。",
-      "**Do** 在手机库存卡中把操作放到第二行并显示文字标签。",
+      "**Do** 在手机库存列表中优先显示完整商品名和右侧数量，点整行展开一组带文字标签的操作；保留至少 56px 的摘要行和 44px 的操作按钮。",
       "**Do** 尊重安全区、可见键盘焦点和减少动态效果偏好。"
     ],
     "donts": [

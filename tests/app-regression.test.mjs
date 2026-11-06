@@ -123,6 +123,27 @@ test('inventory totals keep unlike units separate and include negative balances'
  assert.match(h.byId('stockSummary').textContent,/-3件.*2公斤/);
 });
 
+test('compact inventory rows expand one action group and keep quick movements on the chosen product',async t=>{
+ const h=await harness();t.after(h.close);
+ h.products.push({id:'p2',name:'另一商品',unit:'件',spec:'大包'});
+ h.inbound.push({id:'a',product_id:'p1',quantity:8},{id:'b',product_id:'p2',quantity:2});
+ await h.win.renderStock();
+ const toggles=[...h.byId('stockList').querySelectorAll('.stock-toggle')];
+ assert.equal(toggles.length,2);
+ assert.ok(toggles.every(button=>button.getAttribute('aria-expanded')==='false'));
+ toggles[0].click();assert.equal(toggles[0].getAttribute('aria-expanded'),'true');
+ toggles[1].click();assert.equal(toggles[0].getAttribute('aria-expanded'),'false');
+ assert.equal(toggles[1].getAttribute('aria-expanded'),'true');
+ assert.equal(h.byId('stockList').querySelectorAll('.is-expanded').length,1);
+ const actions=h.byId(toggles[1].getAttribute('aria-controls'));
+ actions.querySelector('.stock-quick-out').click();
+ assert.equal(h.byId('quickOutModalOverlay').dataset.productId,'p2');
+ assert.equal(h.outbound.length,0);
+ h.byId('quickOutQty').value='1';await h.win.handleQuickOut();
+ assert.equal(h.outbound[0].product_id,'p2');assert.equal(h.outbound[0].quantity,1);
+ assert.match(h.byId('stockSummary').textContent,/总库存9件/);
+});
+
 test('alias and reordered or shortened customers reuse original records through preview and save', async t=>{
  const h=await harness();t.after(h.close);
  Object.assign(h.products[0],{name:'三胜达后腿卷',aliases:['后腿卷']});
