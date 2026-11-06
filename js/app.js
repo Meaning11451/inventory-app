@@ -6,6 +6,8 @@ import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js';
 import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer } from './parser.js';
 import { initSync, getPendingCount } from './sync.js';
+import { initOpeningImport } from './opening-ui.js';
+import { isOpeningRecord } from './opening-stock.js';
 
 // 全局暴露
 window._showToast = showToast;
@@ -28,6 +30,7 @@ async function initApp() {
   bindEvents();
   initEntryPreviewGuards();
   initInstallButton();
+  initOpeningImport({ api: DB, onChanged: async () => { setState('products', []); await renderStock(); await renderDashboard(); } });
 
   initSync({
     createInbound: (p) => DB.createInbound(p),
@@ -227,17 +230,17 @@ async function renderDashboard() {
       DB.fetchCurrentStock().catch(() => [])
     ]);
 
-    const today = new Date().toISOString().split('T')[0];
+    const day = today();
     const [inToday, outToday] = await Promise.all([
-      DB.fetchInboundRecords({ from: today, to: today }).catch(() => []),
-      DB.fetchOutboundRecords({ from: today, to: today }).catch(() => [])
+      DB.fetchInboundRecords({ from: day, to: day, excludeOpening: true }).catch(() => []),
+      DB.fetchOutboundRecords({ from: day, to: day, excludeOpening: true }).catch(() => [])
     ]);
 
     // 统计数据
     document.getElementById('statProductCount').textContent = products.length;
     document.getElementById('statCustomerCount').textContent = customers.length;
-    document.getElementById('statTodayIn').textContent = inToday.reduce((s, r) => s + parseFloat(r.quantity), 0) + '件';
-    document.getElementById('statTodayOut').textContent = outToday.reduce((s, r) => s + parseFloat(r.quantity), 0) + '件';
+    document.getElementById('statTodayIn').textContent = inToday.filter(r => !isOpeningRecord(r)).reduce((s, r) => s + parseFloat(r.quantity), 0) + '件';
+    document.getElementById('statTodayOut').textContent = outToday.filter(r => !isOpeningRecord(r)).reduce((s, r) => s + parseFloat(r.quantity), 0) + '件';
 
     // 低库存预警
     const lowStock = stockData.filter(s => parseFloat(s.stock_qty) <= 5 && parseFloat(s.stock_qty) >= 0);
@@ -255,8 +258,8 @@ async function renderDashboard() {
 
     // 最近操作
     const [recentIn, recentOut] = await Promise.all([
-      DB.fetchInboundRecords({}).catch(() => []),
-      DB.fetchOutboundRecords({}).catch(() => [])
+      DB.fetchInboundRecords({ excludeOpening: true }).catch(() => []),
+      DB.fetchOutboundRecords({ excludeOpening: true }).catch(() => [])
     ]);
     const recent = [...recentIn.map(r => ({ ...r, _type: 'in' })), ...recentOut.map(r => ({ ...r, _type: 'out' }))]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -278,7 +281,7 @@ async function renderDashboard() {
               <div style="flex:1;min-width:0;">
                 <div style="font-weight:600;font-size:0.88rem;">${escapeHtml(productName)}</div>
                 <div style="font-size:0.7rem;color:var(--color-text-muted);">
-                  ${r.customer_name ? '👤 ' + escapeHtml(r.customer_name) + ' · ' : ''}${r.recorded_at}
+                  ${isOpeningRecord(r) ? '期初库存 · ' : ''}${r.customer_name ? '👤 ' + escapeHtml(r.customer_name) + ' · ' : ''}${r.recorded_at}
                 </div>
               </div>
               <div style="font-weight:700;font-size:1rem;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
@@ -741,8 +744,8 @@ async function renderRecords() {
 
   try {
     const records = type === 'inbound'
-      ? await DB.fetchInboundRecords({ from, to, customerId: customerId || undefined })
-      : await DB.fetchOutboundRecords({ from, to, customerId: customerId || undefined });
+      ? await DB.fetchInboundRecords({ from, to, customerId: customerId || undefined, excludeOpening: true })
+      : await DB.fetchOutboundRecords({ from, to, customerId: customerId || undefined, excludeOpening: true });
 
     const container = document.getElementById('recordList');
     if (records.length === 0) {
@@ -771,7 +774,7 @@ async function renderRecords() {
                 <div style="font-weight:700;text-align:right;min-width:50px;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
                   ${isIn?'+':'-'}${formatNum(r.quantity)} ${escapeHtml(unit)}
                 </div>
-                <button class="btn btn-sm btn-danger record-del" data-id="${r.id}" data-type="${type}" title="删除记录" style="opacity:0.4;font-size:0.7rem;padding:3px 6px;">✕</button>
+                ${isOpeningRecord(r) ? '<span class="opening-record-tag">期初</span>' : `<button class="btn btn-sm btn-danger record-del" data-id="${r.id}" data-type="${type}" title="删除记录" style="opacity:0.4;font-size:0.7rem;padding:3px 6px;">✕</button>`}
               </div>
             </div>`;
         }).join('')}

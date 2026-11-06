@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
   <title>进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=10">
+  <link rel="stylesheet" href="./css/style.css?v=11">
 </head>
 <body>
 
@@ -89,6 +89,27 @@
         </div>
         <button id="btnAddProduct" class="btn btn-primary" style="flex-shrink:0;padding:10px 14px;">＋ 添加</button>
       </div>
+      <details id="openingStockPanel" class="opening-panel">
+        <summary>导入期初库存</summary>
+        <p class="opening-intro">从管家婆的“库存状况”Excel 开始新账。只结转现有库存，旧经营历程继续在原电脑查询。</p>
+        <div class="opening-file-fields">
+          <label class="form-group" for="openingStockFile"><span class="form-label">库存状况表</span><input id="openingStockFile" class="form-input" type="file" accept=".xls,.xlsx"></label>
+          <label class="form-group" for="openingStockDate"><span class="form-label">结转日期</span><input id="openingStockDate" class="form-input" type="date" required></label>
+          <label id="openingSheetLabel" class="form-group" for="openingStockSheet" hidden><span class="form-label">库存工作表</span><select id="openingStockSheet" class="form-select"></select></label>
+        </div>
+        <p id="openingFileSummary" class="form-hint"></p>
+        <div id="openingStockPreview"></div>
+        <div id="openingBlankUnitTools" class="opening-unit-tools" hidden>
+          <label for="openingDefaultUnit">空单位统一补为</label><input id="openingDefaultUnit" class="form-input" placeholder="例如：件"><button id="openingFillUnits" class="btn btn-outline" type="button">只补空单位</button>
+        </div>
+        <p id="openingImportStatus" class="opening-status" role="status" aria-live="polite">选择文件只会生成预览，点击确认导入后才会保存。</p>
+        <button id="openingStockCheck" class="btn btn-outline" type="button" disabled>核验现有账本</button>
+        <div id="openingStockChecks" class="opening-checks" hidden>
+          <label id="openingNegativeLabel" hidden><input id="openingNegativeAck" type="checkbox">我已核对负库存，按原来的负数结转</label>
+          <label><input id="openingReviewAck" type="checkbox">我已核对结转日期和库存，结转期间暂停其他进出库登记</label>
+        </div>
+        <button id="openingStockSave" class="btn btn-primary btn-block" type="button" disabled>确认导入期初库存</button>
+      </details>
       <div id="stockList"></div>
     </section>
 
@@ -379,9 +400,9 @@
 
   <!-- 第三方库 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=10"></script>
+  <script type="module" src="./js/app.js?v=11"></script>
 </body>
 </html>

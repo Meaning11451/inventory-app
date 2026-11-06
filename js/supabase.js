@@ -2,6 +2,8 @@
 // supabase.js - 数据层：Supabase 客户端 + 所有 CRUD
 // ============================================
 
+import { OPENING_NOTE } from './opening-stock.js';
+
 // TODO: 替换为你的 Supabase 项目 URL 和 anon key
 // 在 Supabase 项目 Settings > API 中可以找到
 const SUPABASE_URL = 'https://ajgczecrgmozkhqfjofa.supabase.co';
@@ -22,12 +24,20 @@ function getClient() {
 // ==================== 商品 ====================
 
 export async function fetchProducts() {
-  const { data, error } = await getClient()
-    .from('products')
-    .select('*')
-    .order('name');
-  if (error) throw error;
-  return data;
+  return (await fetchAllRows('products')).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+}
+
+async function fetchAllRows(table, search = '') {
+  const rows = [];
+  const pageSize = 500;
+  for (let start = 0; ; start += pageSize) {
+    let query = getClient().from(table).select('*').order('id').range(start, start + pageSize - 1);
+    if (search) query = query.ilike('name', `%${search}%`);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
 }
 
 export async function createProduct({ name, spec = '', unit = '件' }) {
@@ -102,13 +112,39 @@ export async function deleteCustomer(id) {
 // ==================== 库存查询 ====================
 
 export async function fetchCurrentStock(search = '') {
-  let query = getClient().from('current_stock').select('*');
-  if (search) {
-    query = query.ilike('name', `%${search}%`);
+  return (await fetchAllRows('current_stock', search)).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+}
+
+// ==================== 期初库存（仅由确认导入按钮调用） ====================
+
+export async function fetchOpeningRecords(ids) {
+  const result = [];
+  const uniqueIds = [...new Set(ids)];
+  for (let start = 0; start < uniqueIds.length; start += 100) {
+    const chunk = uniqueIds.slice(start, start + 100);
+    for (const direction of ['inbound', 'outbound']) {
+      const { data, error } = await getClient().from(`${direction}_records`)
+        .select('id,product_id,quantity,note,recorded_at').in('id', chunk);
+      if (error) throw error;
+      result.push(...data.map(record => ({ ...record, direction })));
+    }
   }
-  const { data, error } = await query.order('name');
-  if (error) throw error;
-  return data;
+  return result;
+}
+
+export async function ensureOpeningProducts(products) {
+  for (let start = 0; start < products.length; start += 200) {
+    const { error } = await getClient().from('products').upsert(products.slice(start, start + 200), { onConflict: 'id', ignoreDuplicates: true });
+    if (error) throw error;
+  }
+}
+
+export async function insertOpeningRecords(direction, records) {
+  if (!['inbound', 'outbound'].includes(direction)) throw new Error('期初库存方向无效');
+  for (let start = 0; start < records.length; start += 200) {
+    const { error } = await getClient().from(`${direction}_records`).upsert(records.slice(start, start + 200), { onConflict: 'id', ignoreDuplicates: true });
+    if (error) throw error;
+  }
 }
 
 export async function fetchProductStock(productId) {
@@ -160,7 +196,7 @@ export async function batchCreateInbound(items) {
   return data;
 }
 
-export async function fetchInboundRecords({ from, to, customerId, productId } = {}) {
+export async function fetchInboundRecords({ from, to, customerId, productId, excludeOpening = false } = {}) {
   let query = getClient()
     .from('inbound_records')
     .select('*, products(name, unit)')
@@ -171,6 +207,7 @@ export async function fetchInboundRecords({ from, to, customerId, productId } = 
   if (to) query = query.lte('recorded_at', to);
   if (customerId) query = query.eq('customer_id', customerId);
   if (productId) query = query.eq('product_id', productId);
+  if (excludeOpening) query = query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
 
   const { data, error } = await query.limit(200);
   if (error) throw error;
@@ -224,7 +261,7 @@ export async function batchCreateOutbound(items) {
   return data;
 }
 
-export async function fetchOutboundRecords({ from, to, customerId, productId } = {}) {
+export async function fetchOutboundRecords({ from, to, customerId, productId, excludeOpening = false } = {}) {
   let query = getClient()
     .from('outbound_records')
     .select('*, products(name, unit)')
@@ -235,6 +272,7 @@ export async function fetchOutboundRecords({ from, to, customerId, productId } =
   if (to) query = query.lte('recorded_at', to);
   if (customerId) query = query.eq('customer_id', customerId);
   if (productId) query = query.eq('product_id', productId);
+  if (excludeOpening) query = query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
 
   const { data, error } = await query.limit(200);
   if (error) throw error;
