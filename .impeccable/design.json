@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-06T02:20:38.801Z",
+  "generatedAt": "2026-11-06T05:46:08.237363Z",
   "title": "Design System: 三胜达进销存",
   "extensions": {
     "colorMeta": {
@@ -171,18 +171,8 @@
       },
       "bg": {
         "role": "neutral",
-        "displayName": "淡灰绿画布",
-        "canonical": "#f5f7f5",
-        "tonalRamp": [
-          "oklch(15.00% 0.00338 145.55)",
-          "oklch(26.43% 0.00338 145.55)",
-          "oklch(37.86% 0.00338 145.55)",
-          "oklch(49.29% 0.00338 145.55)",
-          "oklch(60.71% 0.00338 145.55)",
-          "oklch(72.14% 0.00338 145.55)",
-          "oklch(83.57% 0.00338 145.55)",
-          "oklch(95.00% 0.00338 145.55)"
-        ]
+        "displayName": "暖近白画布",
+        "canonical": "#f7f8f5"
       },
       "surface": {
         "role": "neutral",
@@ -258,6 +248,16 @@
           "oklch(83.57% 0.00755 151.88)",
           "oklch(95.00% 0.00755 151.88)"
         ]
+      },
+      "outbound-text": {
+        "role": "secondary",
+        "displayName": "出库与删除文字红",
+        "canonical": "#a43d29"
+      },
+      "outbound-light": {
+        "role": "secondary",
+        "displayName": "库存出库浅底",
+        "canonical": "#fff5f1"
       }
     },
     "typographyMeta": {
@@ -284,6 +284,10 @@
       "quick-text": {
         "displayName": "快捷文本",
         "purpose": "等宽粘贴区，便于逐行核对。"
+      },
+      "brand": {
+        "displayName": "品牌字",
+        "purpose": "宋体“三胜达”，与事实描述“火锅牛羊肉”共同建立识别。"
       }
     },
     "shadows": [
@@ -351,7 +355,33 @@
         "name": "desktop-sidebar",
         "value": "1024px"
       }
-    ]
+    ],
+    "reviewEvidence": {
+      "status": "captured",
+      "directory": ".impeccable/review",
+      "captures": [
+        {
+          "file": "quiet-desktop.jpg",
+          "viewport": "1440x1000"
+        },
+        {
+          "file": "quiet-stock-desktop.jpg",
+          "viewport": "1440x1000"
+        },
+        {
+          "file": "quiet-mobile.jpg",
+          "viewport": "390x844"
+        },
+        {
+          "file": "quiet-stock-mobile.jpg",
+          "viewport": "390x844"
+        },
+        {
+          "file": "quiet-small-phone.jpg",
+          "viewport": "320x740"
+        }
+      ]
+    }
   },
   "components": [
     {
@@ -382,7 +412,7 @@
       "name": "出库按钮",
       "kind": "button",
       "refersTo": "button-danger",
-      "description": "保留出库与危险操作红。",
+      "description": "表单保存出库保留实色红；首页快捷出库和库存出库、删除使用红字配白色或浅底。",
       "html": "<button class=\"ds-btn ds-danger\">保存出库</button>",
       "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border: none; border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: all var(--transition, 0.2s cubic-bezier(0.4,0,0.2,1)); position: relative; overflow: hidden; } .ds-btn::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.2); opacity: 0; transition: opacity var(--transition, 0.2s); } .ds-btn:hover::after { opacity: 1; } .ds-btn:active { transform: scale(0.96); transition: transform 0.1s ease; } .ds-btn:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-btn:disabled { cursor: wait; opacity: 0.65; } .ds-danger { background: #b94b32; color: white; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); }"
     },
@@ -405,9 +435,9 @@
     {
       "name": "桌面导航项",
       "kind": "nav",
-      "description": "桌面侧栏使用浅绿选中态；手机由底部导航承担。预览省略存量 emoji。",
-      "html": "<nav class=\"ds-nav\" aria-label=\"主导航\"><button class=\"ds-nav-item ds-active\" aria-current=\"page\">库存</button><button class=\"ds-nav-item\">入库</button></nav>",
-      "css": ".ds-nav { display: flex; flex-direction: column; gap: 8px; width: 152px; background: var(--color-surface, #fff); } .ds-nav-item { min-height: 48px; padding: 12px 16px; border: 0; border-radius: 8px; text-align: left; color: var(--color-text-secondary, #636e72); background: none; font-family: var(--font-sans, sans-serif); font-size: 1rem; font-weight: 500; cursor: pointer; transition: all var(--transition, 0.2s); } .ds-nav-item.ds-active { background: var(--color-primary-light, #e6f1e9); color: var(--color-primary, #155b36); font-weight: 600; } .ds-nav-item:active { transform: scale(0.9); } .ds-nav-item:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; }"
+      "description": "白色桌面侧栏，浅绿选中态，统一线性 SVG 图标；手机由底部导航承担。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"主导航\"><button class=\"ds-nav-item ds-active\" aria-current=\"page\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m3 7 9-4 9 4v10l-9 4-9-4Z\"/><path d=\"m3 7 9 4 9-4M12 11v10\"/></svg>库存</button><button class=\"ds-nav-item\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 13v7h16v-7M12 3v12m-5-5 5 5 5-5\"/></svg>入库</button></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 8px; width: 152px; background: var(--color-surface, #fff); } .ds-nav-item { min-height: 48px; padding: 12px 16px; border: 0; border-radius: 8px; display: flex; align-items: center; gap: 12px; text-align: left; color: var(--color-text-secondary, #636e72); background: none; font-family: var(--font-sans, sans-serif); font-size: 1rem; font-weight: 500; cursor: pointer; transition: all var(--transition, 0.2s); } .ds-nav-item.ds-active { background: var(--color-primary-light, #e6f1e9); color: var(--color-primary, #155b36); font-weight: 600; } .ds-nav-item:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-item:hover { background: var(--color-primary-light, #e6f1e9); }"
     },
     {
       "name": "成功徽章",
@@ -416,21 +446,29 @@
       "description": "只表达状态，不承担可点击操作。",
       "html": "<span class=\"ds-badge\">已匹配</span>",
       "css": ".ds-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-family: var(--font-sans, sans-serif); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; background: var(--color-success-light, #e8f3eb); color: var(--color-success, #26714b); }"
+    },
+    {
+      "name": "统计台账",
+      "kind": "custom",
+      "refersTo": "stats-ledger",
+      "description": "四项统计共用白色表面，手机 2×2、桌面四列；标签在数字上方，以 1px 细线分隔。",
+      "html": "<div class=\"ds-stats\"><div class=\"ds-stat\"><span>商品总数</span><strong>24</strong></div><div class=\"ds-stat\"><span>客户总数</span><strong>12</strong></div><div class=\"ds-stat\"><span>今日入库</span><strong>36件</strong></div><div class=\"ds-stat\"><span>今日出库</span><strong>18件</strong></div></div>",
+      "css": ".ds-stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); overflow: hidden; border: 1px solid var(--color-border,#e4e9e5); border-radius: 14px; background: var(--color-surface,#fff); font-family: var(--font-sans,sans-serif); } .ds-stat { display: grid; gap: 12px; padding: 20px; border-bottom: 1px solid var(--color-border,#e4e9e5); } .ds-stat:nth-child(odd) { border-right: 1px solid var(--color-border,#e4e9e5); } .ds-stat:nth-last-child(-n+2) { border-bottom: 0; } .ds-stat span { font-size: 0.8rem; font-weight: 500; color: var(--color-text-secondary,#636e72); } .ds-stat strong { font-size: 1.8rem; font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--color-text,#2d3436); } @media(min-width:1024px) { .ds-stats { grid-template-columns: repeat(4,minmax(0,1fr)); } .ds-stat { padding: 24px; border-bottom: 0; border-right: 1px solid var(--color-border,#e4e9e5); } .ds-stat:last-child { border-right: 0; } }"
     }
   ],
   "narrative": {
     "northStar": "门店绿，白色工作台",
-    "overview": "这是现有进销存操作界面的轻量品牌延续。名称使用“三胜达进销存”，安装后的短名称使用“三胜达库存”。只取用户提供门店招牌中的深绿与“三胜达”椭圆徽记；品牌留在页头、桌面侧栏与应用图标，库存、表单和记录仍以清晰的白色卡片呈现。\n\n本规范从完成后的 `css/style.css`、`index.html` 和 `manifest.json` 提取。没有重排既有业务信息或改写操作文案。既有 emoji 业务标记保持原样，它们是存量内容，不作为新增图标体系的规范。未建立缺失的 PRODUCT.md，也不从招牌推断额外业务承诺。",
+    "overview": "这是现有进销存操作界面的轻量品牌延续。名称使用“三胜达进销存”，安装后的短名称使用“三胜达库存”。以宋体“三胜达”和用户提供的“火锅牛羊肉”描述建立识别，椭圆徽记作为辅助。页头和桌面侧栏保持白色；绿色用于品牌文字、选中态、主要操作与正向数量。\n\n本规范从完成后的 `css/style.css`、`index.html`、`js/app.js` 和 `manifest.json` 提取。首页统计合并为一个台账表面；导航、统计、快捷动作、库存分类与操作使用统一的内联 SVG 线性图标。其他未改动表单与空态仍可能保留存量 emoji。未建立缺失的 PRODUCT.md，也不从招牌推断额外业务承诺。",
     "keyCharacteristics": [
-      "深绿品牌框架，白色业务表面。",
-      "商品、数量、状态和操作保持既有卡片层级。",
+      "白色页头与侧栏，暖近白画布，绿色只作局部强调。",
+      "宋体品牌字与线性图标建立特色，统计使用一个分隔台账。",
       "手机底部导航，桌面左侧导航。",
       "椭圆徽记小范围出现，不带门店电话、地址或整张招牌。"
     ],
     "rules": [
       {
         "name": "The Light Branding Rule",
-        "body": "品牌用于界面框架和小徽记，保留白色业务区域与原有信息密度。",
+        "body": "页头与侧栏使用白色和细分隔线，品牌依靠宋体字、事实描述和小徽记；不使用整条绿色页头。",
         "section": "colors"
       },
       {
@@ -440,7 +478,7 @@
       }
     ],
     "dos": [
-      "**Do** 使用已生成的“三胜达”徽记和现有深绿令牌，保持小范围品牌识别。",
+      "**Do** 以宋体“三胜达”、事实描述“火锅牛羊肉”和统一线性 SVG 图标建立识别，徽记保持辅助尺寸。",
       "**Do** 保留白色卡片、业务信息层级、语义状态色和现有操作文案。",
       "**Do** 在手机库存卡中把操作放到第二行并显示文字标签。",
       "**Do** 尊重安全区、可见键盘焦点和减少动态效果偏好。"
@@ -449,7 +487,8 @@
       "**Don't** 在业务卡片上重复放大标识，或把整张门店招牌铺作背景。",
       "**Don't** 把电话号码、地址和招牌其他宣传文字加入应用标识。",
       "**Don't** 用品牌绿替换出库、危险或错误的红色语义。",
-      "**Don't** 将本轮保留的 emoji 与存量动效推广为新增设计系统规则。"
+      "**Don't** 恢复整条绿色页头、四张独立统计卡或统计顶部色条。",
+      "**Don't** 将未改动表单中的存量 emoji 推广为新增图标规则。"
     ]
   }
 }

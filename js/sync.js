@@ -170,7 +170,7 @@ export function initSync(executors) {
     document.getElementById('offlineBanner')?.classList.remove('show');
     document.getElementById('syncStatus')?.classList.remove('offline');
     document.getElementById('syncStatus')?.classList.add('online');
-    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='🟢 在线';
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='在线';
 
     const result = await processQueue(executors).catch(()=>({success:0,fail:1}));
     if (result.success > 0 || result.fail > 0) {
@@ -189,7 +189,7 @@ export function initSync(executors) {
     document.getElementById('offlineBanner')?.classList.add('show');
     document.getElementById('syncStatus')?.classList.add('offline');
     document.getElementById('syncStatus')?.classList.remove('online');
-    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='🔴 离线';
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='离线';
   };
 
   window.addEventListener('online', handleOnline);

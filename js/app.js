@@ -262,11 +262,11 @@ async function renderDashboard() {
     const lowStock = stockData.filter(s => parseFloat(s.stock_qty) <= 5);
     const lowDiv = document.getElementById('dashboardLowStock');
     if (lowStock.length === 0) {
-      lowDiv.innerHTML = '<div style="color:var(--color-text-muted);font-size:0.85rem;padding:8px 0;">✅ 库存充足，无需补货</div>';
+      lowDiv.innerHTML = '<div class="stock-health"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-check"></use></svg> 库存充足，无需补货</div>';
     } else {
       lowDiv.innerHTML = lowStock.map(s => `
         <div class="alert-item">
-          📦 ${escapeHtml(s.name)}
+          <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-stock"></use></svg> ${escapeHtml(s.name)}
           <span class="alert-qty">仅剩 ${formatNum(s.stock_qty)} ${escapeHtml(s.unit)}</span>
         </div>
       `).join('');
@@ -332,7 +332,7 @@ async function renderStock() {
       const qtyClass = item.stock_qty > 0 ? 'qty-positive' : item.stock_qty < 0 ? 'qty-negative' : 'qty-zero';
       return `
         <div class="card stock-card" data-product-id="${item.id}">
-          <div class="stock-card-emoji">${getEmoji(item.name)}</div>
+          <div class="stock-card-emoji"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-stock"></use></svg></div>
           <div class="stock-card-info stock-edit-trigger" data-product-id="${item.id}">
             <div class="stock-card-name">${escapeHtml(item.name)}</div>
             ${item.spec ? `<div class="stock-card-spec">${escapeHtml(item.spec)}</div>` : ''}
@@ -342,10 +342,10 @@ async function renderStock() {
             <div class="qty-unit">${escapeHtml(item.unit)}</div>
           </div>
           <div class="stock-card-actions">
-            <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="入库：${escapeHtml(item.name)}" title="入库"><span class="stock-action-icon" aria-hidden="true">📥</span><span class="stock-action-label" aria-hidden="true">入库</span></button>
-            <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="出库：${escapeHtml(item.name)}" title="出库"><span class="stock-action-icon" aria-hidden="true">📤</span><span class="stock-action-label" aria-hidden="true">出库</span></button>
-            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" aria-label="编辑：${escapeHtml(item.name)}" title="编辑"><span class="stock-action-icon" aria-hidden="true">✏️</span><span class="stock-action-label" aria-hidden="true">编辑</span></button>
-            <button class="btn btn-sm btn-danger stock-del" data-id="${item.id}" data-name="${escapeHtml(item.name)}" aria-label="删除：${escapeHtml(item.name)}" title="删除"><span class="stock-action-icon" aria-hidden="true">🗑️</span><span class="stock-action-label" aria-hidden="true">删除</span></button>
+            <button class="btn btn-sm btn-success stock-quick-in" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="入库：${escapeHtml(item.name)}" title="入库"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-inbound"></use></svg></span><span class="stock-action-label" aria-hidden="true">入库</span></button>
+            <button class="btn btn-sm btn-danger stock-quick-out" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-unit="${escapeHtml(item.unit)}" aria-label="出库：${escapeHtml(item.name)}" title="出库"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-outbound"></use></svg></span><span class="stock-action-label" aria-hidden="true">出库</span></button>
+            <button class="btn btn-sm btn-outline stock-edit" data-id="${item.id}" aria-label="编辑：${escapeHtml(item.name)}" title="编辑"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-edit"></use></svg></span><span class="stock-action-label" aria-hidden="true">编辑</span></button>
+            <button class="btn btn-sm btn-danger stock-del" data-id="${item.id}" data-name="${escapeHtml(item.name)}" aria-label="删除：${escapeHtml(item.name)}" title="删除"><span class="stock-action-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-delete"></use></svg></span><span class="stock-action-label" aria-hidden="true">删除</span></button>
           </div>
         </div>
       `;
@@ -858,7 +858,7 @@ async function renderCustomers() {
   }
   container.innerHTML = customers.map(c => `
     <div class="card stock-card">
-      <div class="stock-card-emoji">👤</div>
+      <div class="stock-card-emoji"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-customers"></use></svg></div>
       <div class="stock-card-info">
         <div class="stock-card-name">${escapeHtml(c.name)}</div>
         <div class="stock-card-spec">${c.phone ? '📱 ' + escapeHtml(c.phone) : ''}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>
@@ -1162,11 +1162,6 @@ function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c =>
 function formatNum(n) { if (n === null || n === undefined) return '0'; return Number(n) === Math.floor(n) ? String(Math.floor(n)) : String(Number(n).toFixed(2)); }
 function debounce(fn, d) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), d); }; }
 function groupBy(arr, kfn) { const m = {}; arr.forEach(i => { const k = typeof kfn === 'function' ? kfn(i) : i[kfn]; if (!m[k]) m[k] = []; m[k].push(i); }); return m; }
-function getEmoji(name) {
-  const map = { '肉':'🥩','鸡':'🐔','鸭':'🦆','鱼':'🐟','虾':'🦐','猪':'🐷','牛':'🐮','羊':'🐑','蛋':'🥚','菜':'🥬','米':'🍚','面':'🍜','油':'🫗','酒':'🍺','水':'💧','卷':'🌀','号':'🔢','奶':'🥛','茶':'🍵','腿':'🍗','爪':'🐾' };
-  for (const [k, e] of Object.entries(map)) { if (name.includes(k)) return e; }
-  return '📦';
-}
 
 // Lock a save action before any asynchronous lookup starts.
 const savingScopes = new Set();
@@ -1206,7 +1201,7 @@ function setDatabaseStatus(connected) {
   const element=document.getElementById('syncStatus');
   if(!element)return;
   const online=navigator.onLine;
-  element.textContent=online ? (connected ? '🟢 已连接' : '🟠 账本未连接') : '🔴 离线';
+  element.textContent=online ? (connected ? '已连接' : '账本未连接') : '离线';
   element.classList.toggle('online',online&&connected);
   element.classList.toggle('offline',!online||!connected);
 }

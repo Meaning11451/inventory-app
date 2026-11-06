@@ -1,6 +1,6 @@
 ---
 name: 三胜达进销存
-description: 保留既有库存操作界面，以门店深绿和小尺寸椭圆标识作轻量品牌识别。
+description: 保留既有库存操作界面，以白色框架、宋体品牌字和统一线性图标作轻量品牌识别。
 colors:
   primary: "#155b36"
   primary-dark: "#0e4327"
@@ -13,7 +13,9 @@ colors:
   danger-light: "#fef0ed"
   warning: "#fdcb6e"
   warning-light: "#fff9e6"
-  bg: "#f5f7f5"
+  bg: "#f7f8f5"
+  outbound-text: "#a43d29"
+  outbound-light: "#fff5f1"
   surface: "#ffffff"
   text: "#2d3436"
   text-secondary: "#636e72"
@@ -29,10 +31,16 @@ typography:
     fontWeight: 600
     lineHeight: 1.4
   metric:
-    fontSize: "1.6rem"
-    fontWeight: 800
+    fontSize: "1.8rem"
+    fontWeight: 650
     lineHeight: 1.2
-    letterSpacing: "-0.03em"
+    letterSpacing: "-0.02em"
+  brand:
+    fontFamily: '"Songti SC", "STSong", "SimSun", serif'
+    fontSize: "1.25rem"
+    fontWeight: 700
+    lineHeight: 1.15
+    letterSpacing: "0.08em"
   label:
     fontSize: "0.8rem"
     fontWeight: 600
@@ -51,7 +59,8 @@ rounded:
   md: "12px"
   lg: "16px"
   xl: "20px"
-  brand: "10px"
+  brand: "9px"
+  stats: "14px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -83,6 +92,18 @@ components:
     textColor: "{colors.surface}"
     rounded: "{rounded.sm}"
     padding: "12px 20px"
+  button-outbound:
+    backgroundColor: "{colors.outbound-light}"
+    textColor: "{colors.outbound-text}"
+    rounded: "{rounded.sm}"
+  stats-ledger:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.stats}"
+  header:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text}"
+    height: "64px"
   card:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.text}"
@@ -105,14 +126,14 @@ components:
 
 **Creative North Star: "门店绿，白色工作台"**
 
-这是现有进销存操作界面的轻量品牌延续。名称使用“三胜达进销存”，安装后的短名称使用“三胜达库存”。只取用户提供门店招牌中的深绿与“三胜达”椭圆徽记；品牌留在页头、桌面侧栏与应用图标，库存、表单和记录仍以清晰的白色卡片呈现。
+这是现有进销存操作界面的轻量品牌延续。名称使用“三胜达进销存”，安装后的短名称使用“三胜达库存”。以宋体“三胜达”和用户提供的“火锅牛羊肉”描述建立识别，椭圆徽记作为辅助。页头和桌面侧栏保持白色；绿色用于品牌文字、选中态、主要操作与正向数量。
 
-本规范从完成后的 `css/style.css`、`index.html` 和 `manifest.json` 提取。没有重排既有业务信息或改写操作文案。既有 emoji 业务标记保持原样，它们是存量内容，不作为新增图标体系的规范。未建立缺失的 PRODUCT.md，也不从招牌推断额外业务承诺。
+本规范从完成后的 `css/style.css`、`index.html`、`js/app.js` 和 `manifest.json` 提取。首页统计合并为一个台账表面；导航、统计、快捷动作、库存分类与操作使用统一的内联 SVG 线性图标。其他未改动表单与空态仍可能保留存量 emoji。未建立缺失的 PRODUCT.md，也不从招牌推断额外业务承诺。
 
 **Key Characteristics:**
 
-- 深绿品牌框架，白色业务表面。
-- 商品、数量、状态和操作保持既有卡片层级。
+- 白色页头与侧栏，暖近白画布，绿色只作局部强调。
+- 宋体品牌字与线性图标建立特色，统计使用一个分隔台账。
 - 手机底部导航，桌面左侧导航。
 - 椭圆徽记小范围出现，不带门店电话、地址或整张招牌。
 
@@ -122,19 +143,19 @@ components:
 
 ### Primary
 
-- **门店深绿**（primary）：页头、主要按钮、选中导航、输入焦点和文本光标。
+- **门店深绿**（primary）：品牌文字、主要按钮、选中导航、输入焦点和文本光标。
 - **深绿按压色**（primary-dark）：主要按钮悬停和局部强调。
-- **浅绿底色**（primary-light）：桌面选中导航、库存图标底和次要操作悬停。
+- **浅绿底色**（primary-light）：桌面选中导航和次要操作悬停；库存图标使用更淡的中性底。
 
 ### Secondary
 
 - **入库绿**（success / success-light）：正库存、入库标记和成功状态；成功按钮使用 success-action。
-- **出库红**（danger / danger-light）：出库、负库存和错误；危险操作按钮使用 danger-action。
+- **出库红**（danger / danger-light）：负库存和错误；表单保存出库按钮保留 danger-action。首页出库快捷按钮及库存出库、删除按钮用 outbound-text 红字，配白底或 outbound-light 浅底。
 - **提醒黄**（warning / warning-light）：低库存、离线和待核对状态。
 
 ### Neutral
 
-- **淡灰绿画布**（bg）：页面背景。
+- **暖近白画布**（bg）：页面背景。
 - **白色工作表面**（surface）：卡片、输入和导航。
 - **正文灰**（text）：业务名称和主要数字。
 - **辅助灰**（text-secondary / text-muted）：规格、单位、提示和次级文字。
@@ -142,22 +163,22 @@ components:
 
 ### Named Rules
 
-**The Light Branding Rule.** 品牌用于界面框架和小徽记，保留白色业务区域与原有信息密度。
+**The Light Branding Rule.** 页头与侧栏使用白色和细分隔线，品牌依靠宋体字、事实描述和小徽记；不使用整条绿色页头。
 
 **The Semantic Color Rule.** 出库和危险操作继续使用红色；不能为了统一品牌而将所有状态改成绿色。
 
 ## Typography
 
-正文和控件沿用系统无衬线字体栈，中文回退至苹方或微软雅黑。快捷粘贴文本使用等宽字体；没有新增展示字体。
+正文和控件沿用系统无衬线字体栈，中文回退至苹方或微软雅黑。品牌字使用 Songti SC、STSong、SimSun 与 serif 回退；快捷粘贴文本使用等宽字体。
 
 ### Hierarchy
 
-- **统计数字**（metric）：首页合计；库存数量另用（1.35rem，700）。
+- **统计数字**（metric）：首页合计为 28.8px、650 字重，使用等宽数字；12.8px、500 字重的标签位于数字上方。库存数量另用（1.35rem，700）。
 - **卡片标题**（card-title）：商品名称，规格在下方作为次级文字。
 - **正文**（body）：全局阅读基准；表单字段为（0.95rem）。
 - **标签与按钮**（label / button）：标签保留较紧凑层级，按钮用中粗字重。
 - **快捷文本**（quick-text）：较宽行距便于逐行核对。
-- **品牌与页标题**：手机品牌名为（1rem，700），当前页名为（0.85rem，500）；桌面当前页名为（1.25rem，650）。
+- **品牌与页标题**：品牌名为（1.25rem，700，0.08em 字距），359px 及以下缩为 1.1rem；页标题为（1.25rem，手机 600 / 桌面 650）。品牌描述为 0.7rem。
 
 ## Layout
 
@@ -165,7 +186,7 @@ components:
 
 从（640px）起，内容水平内边距为（24px），卡片内边距为（18px 22px）。库存卡在宽度不超过（767px）时，商品与数量在第一行，四个操作在第二行等分排列，显示文字标签，按钮最小高度（44px）；长名称允许折行。
 
-从（1024px）起，导航转为（176px）宽左侧栏，品牌在侧栏顶部；页头只保留当前页标题。内容最大宽度（1240px），内边距为（28px 32px 40px）；统计为四列，库存与客户列表为两列。期初文件字段从（768px）起分为两列，宽表格由容器滚动。
+从（1024px）起，导航转为（176px）宽左侧栏，品牌在侧栏顶部；页头只保留当前页标题。内容最大宽度（1240px），内边距为（28px 32px 40px）；统计在同一白色表面内分为四列（手机为 2×2），单元格以 1px 分隔线相连；库存与客户列表为两列。期初文件字段从（768px）起分为两列，宽表格由容器滚动。
 
 ## Elevation & Depth
 
@@ -179,17 +200,17 @@ components:
 
 ## Shapes
 
-常用按钮与字段为小圆角，卡片为中圆角，搜索框为大圆角；底部弹层仅顶部使用最大圆角。品牌图标外框使用独立圆角，内部椭圆形状来自已生成的图像资产，不用 CSS 或文字重画标识。
+常用按钮与字段为小圆角，卡片为中圆角，搜索框为大圆角；底部弹层仅顶部使用最大圆角。品牌图标外框为 9px 圆角，内部椭圆形状来自已生成的图像资产；旁边的宋体品牌字是独立排版。统计台账整体圆角为 14px。
 
 ## Components
 
 ### Buttons
 
-主要按钮使用深绿与白字，悬停加深；描边按钮使用白底，悬停转浅绿。入库、出库动作分别保留成功绿和危险红。按钮按下缩放至（0.96），禁用态降低透明度并等待。键盘焦点为（3px）主色轮廓，页头按钮使用白色焦点轮廓。
+主要按钮使用深绿与白字，悬停加深；描边按钮使用白底，悬停转浅绿。入库保留成功绿主按钮；首页出库快捷按钮、库存出库和删除使用红字配白色或浅红底，表单保存出库按钮保留原实色。按钮按下缩放至（0.96），禁用态降低透明度并等待。键盘焦点为（3px）主色轮廓，页头按钮同样使用主色焦点轮廓。安装入口在手机为 44px 图标按钮，并有“添加到桌面”可访问名称；桌面同时显示图标与文字。
 
 ### Cards / Containers
 
-业务卡片使用白底、细边线与轻阴影；保持原有商品、规格、数量、操作顺序。品牌不重复进入每张卡片。统计卡顶部保留各自的细状态色条。
+业务卡片使用白底、细边线与轻阴影；保持原有商品、规格、数量、操作顺序。品牌不重复进入每张卡片。首页四项统计共用一个白色台账表面，以 1px 细线分隔；标签在数字上方，不使用独立卡片间隙或顶部色条。
 
 ### Inputs / Fields
 
@@ -197,7 +218,7 @@ components:
 
 ### Navigation
 
-手机品牌位于页头，六项导航位于底部；选中项用深绿文字与短线表示。桌面品牌移至侧栏，选中项增加浅绿底。保留导航和业务中的既有 emoji，不扩展为新的品牌素材。
+手机品牌位于页头，六项导航位于底部；选中项用深绿文字与短线表示。桌面品牌移至侧栏，选中项增加浅绿底。导航使用同一组内联 SVG 描边图标，20px 基础尺寸、1.7 描边宽度，导航为 22px；统计、快捷动作、库存分类与操作沿用同一图标体系。未改动业务表单和空态中的存量 emoji 不代表新图标规则。
 
 ### Badges
 
@@ -205,13 +226,13 @@ components:
 
 ### Brand assets
 
-已生成的“三胜达”椭圆徽记用于（40px）页头与侧栏图标，以及 favicon、Apple Touch Icon 和 PWA 图标。仅使用品牌文字与绿色，不纳入电话号码、地址或整张招牌。生成来源见 `icons/brand-provenance.json`，完整提示词见 `icons/brand-prompt.txt`；高分辨率母图保留在本地 `.impeccable/assets/brand-master.png`，不随网站发布。
+已生成的“三胜达”椭圆徽记用于（34px）页头与侧栏辅助图标，以及 favicon、Apple Touch Icon 和 PWA 图标；359px 及以下隐藏页头徽记以容纳品牌字与操作。浏览器与 PWA theme-color 为白色。仅使用品牌文字与绿色，不纳入电话号码、地址或整张招牌。生成来源见 `icons/brand-provenance.json`，完整提示词见 `icons/brand-prompt.txt`；高分辨率母图保留在本地 `.impeccable/assets/brand-master.png`，不随网站发布。
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** 使用已生成的“三胜达”徽记和现有深绿令牌，保持小范围品牌识别。
+- **Do** 以宋体“三胜达”、事实描述“火锅牛羊肉”和统一线性 SVG 图标建立识别，徽记保持辅助尺寸。
 - **Do** 保留白色卡片、业务信息层级、语义状态色和现有操作文案。
 - **Do** 在手机库存卡中把操作放到第二行并显示文字标签。
 - **Do** 尊重安全区、可见键盘焦点和减少动态效果偏好。
@@ -221,5 +242,6 @@ components:
 - **Don't** 在业务卡片上重复放大标识，或把整张门店招牌铺作背景。
 - **Don't** 把电话号码、地址和招牌其他宣传文字加入应用标识。
 - **Don't** 用品牌绿替换出库、危险或错误的红色语义。
-- **Don't** 将本轮保留的 emoji 与存量动效推广为新增设计系统规则。
+- **Don't** 恢复整条绿色页头、四张独立统计卡或统计顶部色条。
+- **Don't** 将未改动表单中的存量 emoji 推广为新增图标规则。
 
