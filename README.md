@@ -1,6 +1,8 @@
-# 📦 个人进销存管理系统
+# 📦 三胜达进销存
 
 电脑和手机共用的库存网页，GitHub Pages 托管界面，Supabase 保存共享数据。当前功能聚焦客户、商品、入库、出库和库存，不要求录入价格。
+
+使用地址：**[三胜达进销存](https://meaning11451.github.io/inventory-app/)**。电脑和 iPhone 都打开这个网址；当前按用户选择免账号使用，共用同一份云端账本。查询最新库存、保存进出库和同步数据都需要联网。
 
 ## ✨ 功能
 
@@ -14,7 +16,9 @@
 - 📱 **PWA** - 支持添加到桌面；进出库记录请联网保存
 - 🔄 **双端同步** - 手机电脑数据实时同步
 
-## 🚀 快速开始
+## 🚀 自行部署
+
+使用上面的现有网址无需重新建库；以下步骤供另建项目时参考。
 
 ### 1. 注册 Supabase（免费数据库）
 
@@ -42,7 +46,7 @@ const SUPABASE_URL = 'YOUR_SUPABASE_URL';       // 替换为 Project URL
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // 替换为 anon key
 ```
 
-### 4. 部署到 Vercel（免费）
+### 4. 部署到 GitHub Pages
 
 1. 把代码推送到 GitHub 仓库：
 
@@ -56,14 +60,21 @@ git remote add origin https://github.com/你的用户名/仓库名.git
 git push -u origin main
 ```
 
-2. 打开 [vercel.com](https://vercel.com)，用 GitHub 登录
-3. 点击 **New Project** → 选择你的仓库 → **Deploy**
-4. 完成！你会得到一个 `https://xxx.vercel.app` 的网址
-5. 手机上用浏览器打开这个网址，添加到桌面即可
+2. 在 GitHub 仓库打开 **Settings → Pages**，选择从 `main` 分支的根目录发布
+3. 发布完成后使用 Pages 提供的网址；本项目现有地址为 [https://meaning11451.github.io/inventory-app/](https://meaning11451.github.io/inventory-app/)
+4. 电脑和手机使用同一网址，安装方法见下方说明
 
-### 5. 生成 PWA 图标（可选）
+### 5. 预览与构建品牌图标
 
-在浏览器中打开 `icons/generate.html`，点击生成并下载图标，放入 `icons/` 目录。
+在浏览器中打开 `icons/generate.html`，可预览和下载现有“三胜达”图标。图标只轻量采用招牌的绿色与椭圆徽记，不含电话、地址和整张招牌。
+
+需要从已选定的高分辨率母图重新生成尺寸时：
+
+```sh
+npm run icons:build -- <master.png>
+```
+
+将 `<master.png>` 替换为母图路径。脚本用 Sharp 缩放图标并生成带安全留白的 maskable 版本，不重画文字。当前图像由 `image_gen.imagegen` 生成，完整提示词和来源记录分别保存在 `icons/brand-prompt.txt`、`icons/brand-provenance.json`；已发布 PNG 嵌入了来源元数据，重新构建后也需保留该记录。本地母图位于 `.impeccable/assets/brand-master.png`，不随网站发布。
 
 ## 📱 快捷录入格式
 
@@ -91,14 +102,14 @@ git push -u origin main
 - 纯 HTML/CSS/JS（Vanilla JS，零框架）
 - Supabase（PostgreSQL 数据库 + 自动 API）
 - PWA（Service Worker + Manifest）
-- Vercel 部署
+- GitHub Pages 部署
 
 ## 💰 费用
 
 可使用免费套餐部署；不需要另外租独立服务器。
 
 - Supabase Free 目前提供每个项目 500MB 数据库；实际额度和条款以 https://supabase.com/pricing 为准。免费项目闲置一周可能暂停，免费套餐不含自动数据库备份。
-- Vercel 免费版：无限静态网站托管
+- 网页由 GitHub Pages 托管
 - GitHub 免费版：无限私有仓库
 
 
@@ -145,11 +156,14 @@ git push -u origin main
 
 Excel 读取组件沿用 SheetJS CE 0.18.5，随网站一并发布，来源和许可证见 `vendor/`。原始账表和本地模拟账本不随网站发布。
 
-## 在电脑上使用
+## 在电脑和 iPhone 上使用
 
-电脑浏览器打开相同网址即可，1024px 及以上宽度使用左侧导航和宽表格，手机使用底部导航。
+电脑浏览器和 iPhone Safari 都打开 **[三胜达进销存](https://meaning11451.github.io/inventory-app/)**。1024px 及以上宽度使用左侧导航和宽表格，手机使用底部导航；两端共用同一份云端数据，无需分别导入。
 
-Edge / Chrome 支持安装时，页头出现“添加到桌面”。安装后可从桌面图标打开独立窗口，仍然使用同一份云端数据。它是可安装网页，不是另一个 Windows 原生程序。浏览器不提供安装入口时，仍可正常使用网页。
+- **电脑**：用 Edge / Chrome 打开网址。浏览器提供安装能力时，点击页头“添加到桌面”，按提示安装；以后从桌面图标打开独立窗口。没有安装入口时，可直接用网页。
+- **iPhone**：用 Safari 打开网址，点击“分享”→“添加到主屏幕”→“添加”；以后点主屏幕上的“三胜达库存”图标打开。
+
+这是同一个可安装网页（PWA），没有独立的 Windows `.exe` 或 App Store 版本。安装后查询最新库存、保存和同步仍需要网络；离线时可能显示缓存数据。若已有快捷方式仍显示旧图标，移除旧快捷方式后重新添加即可。
 
 ## 检查代码
 
@@ -159,7 +173,7 @@ npm test
 
 测试包含客户分组、品牌区分、单位识别、全角数字、手机号码、Excel 首行，以及期初表头定位、负数和零库存、已有业务拦截、重复导入和中断重试。浏览器流程检查使用 `tests/fixtures/mock-db.js` 中的模拟数据；生产页面始终使用 `js/supabase.js`。
 
-本次修改不改数据库结构和访问策略。仓库初始建库脚本含开放的读写策略；导入实际客户账本前，需要确认线上策略并补齐家庭账号访问控制。
+本次修改不改数据库结构和访问策略。当前按用户选择继续免账号使用，沿用已有云端访问方式。
 
 
 ## 2026-11-06 回归检查和修复

@@ -1,0 +1,455 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T02:20:38.801Z",
+  "title": "Design System: 三胜达进销存",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "门店深绿",
+        "canonical": "#155b36",
+        "tonalRamp": [
+          "oklch(15.00% 0.09185 155.28)",
+          "oklch(26.43% 0.09185 155.28)",
+          "oklch(37.86% 0.09185 155.28)",
+          "oklch(49.29% 0.09185 155.28)",
+          "oklch(60.71% 0.09185 155.28)",
+          "oklch(72.14% 0.09185 155.28)",
+          "oklch(83.57% 0.09185 155.28)",
+          "oklch(95.00% 0.09185 155.28)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "深绿按压色",
+        "canonical": "#0e4327",
+        "tonalRamp": [
+          "oklch(15.00% 0.07362 155.51)",
+          "oklch(26.43% 0.07362 155.51)",
+          "oklch(37.86% 0.07362 155.51)",
+          "oklch(49.29% 0.07362 155.51)",
+          "oklch(60.71% 0.07362 155.51)",
+          "oklch(72.14% 0.07362 155.51)",
+          "oklch(83.57% 0.07362 155.51)",
+          "oklch(95.00% 0.07362 155.51)"
+        ]
+      },
+      "primary-light": {
+        "role": "primary",
+        "displayName": "浅绿底色",
+        "canonical": "#e6f1e9",
+        "tonalRamp": [
+          "oklch(15.00% 0.01576 154.47)",
+          "oklch(26.43% 0.01576 154.47)",
+          "oklch(37.86% 0.01576 154.47)",
+          "oklch(49.29% 0.01576 154.47)",
+          "oklch(60.71% 0.01576 154.47)",
+          "oklch(72.14% 0.01576 154.47)",
+          "oklch(83.57% 0.01576 154.47)",
+          "oklch(95.00% 0.01576 154.47)"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "入库绿",
+        "canonical": "#26714b",
+        "tonalRamp": [
+          "oklch(15.00% 0.09607 157.58)",
+          "oklch(26.43% 0.09607 157.58)",
+          "oklch(37.86% 0.09607 157.58)",
+          "oklch(49.29% 0.09607 157.58)",
+          "oklch(60.71% 0.09607 157.58)",
+          "oklch(72.14% 0.09607 157.58)",
+          "oklch(83.57% 0.09607 157.58)",
+          "oklch(95.00% 0.09607 157.58)"
+        ]
+      },
+      "success-light": {
+        "role": "secondary",
+        "displayName": "成功浅底",
+        "canonical": "#e8f3eb",
+        "tonalRamp": [
+          "oklch(15.00% 0.01574 154.47)",
+          "oklch(26.43% 0.01574 154.47)",
+          "oklch(37.86% 0.01574 154.47)",
+          "oklch(49.29% 0.01574 154.47)",
+          "oklch(60.71% 0.01574 154.47)",
+          "oklch(72.14% 0.01574 154.47)",
+          "oklch(83.57% 0.01574 154.47)",
+          "oklch(95.00% 0.01574 154.47)"
+        ]
+      },
+      "success-action": {
+        "role": "secondary",
+        "displayName": "入库按钮绿",
+        "canonical": "#216b45",
+        "tonalRamp": [
+          "oklch(15.00% 0.09542 156.91)",
+          "oklch(26.43% 0.09542 156.91)",
+          "oklch(37.86% 0.09542 156.91)",
+          "oklch(49.29% 0.09542 156.91)",
+          "oklch(60.71% 0.09542 156.91)",
+          "oklch(72.14% 0.09542 156.91)",
+          "oklch(83.57% 0.09542 156.91)",
+          "oklch(95.00% 0.09542 156.91)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "出库红",
+        "canonical": "#e17055",
+        "tonalRamp": [
+          "oklch(15.00% 0.14705 34.62)",
+          "oklch(26.43% 0.14705 34.62)",
+          "oklch(37.86% 0.14705 34.62)",
+          "oklch(49.29% 0.14705 34.62)",
+          "oklch(60.71% 0.14705 34.62)",
+          "oklch(72.14% 0.14705 34.62)",
+          "oklch(83.57% 0.14705 34.62)",
+          "oklch(95.00% 0.14705 34.62)"
+        ]
+      },
+      "danger-action": {
+        "role": "secondary",
+        "displayName": "危险按钮红",
+        "canonical": "#b94b32",
+        "tonalRamp": [
+          "oklch(15.00% 0.14809 34.26)",
+          "oklch(26.43% 0.14809 34.26)",
+          "oklch(37.86% 0.14809 34.26)",
+          "oklch(49.29% 0.14809 34.26)",
+          "oklch(60.71% 0.14809 34.26)",
+          "oklch(72.14% 0.14809 34.26)",
+          "oklch(83.57% 0.14809 34.26)",
+          "oklch(95.00% 0.14809 34.26)"
+        ]
+      },
+      "danger-light": {
+        "role": "secondary",
+        "displayName": "危险浅底",
+        "canonical": "#fef0ed",
+        "tonalRamp": [
+          "oklch(15.00% 0.01572 32.01)",
+          "oklch(26.43% 0.01572 32.01)",
+          "oklch(37.86% 0.01572 32.01)",
+          "oklch(49.29% 0.01572 32.01)",
+          "oklch(60.71% 0.01572 32.01)",
+          "oklch(72.14% 0.01572 32.01)",
+          "oklch(83.57% 0.01572 32.01)",
+          "oklch(95.00% 0.01572 32.01)"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "提醒黄",
+        "canonical": "#fdcb6e",
+        "tonalRamp": [
+          "oklch(15.00% 0.12467 81.39)",
+          "oklch(26.43% 0.12467 81.39)",
+          "oklch(37.86% 0.12467 81.39)",
+          "oklch(49.29% 0.12467 81.39)",
+          "oklch(60.71% 0.12467 81.39)",
+          "oklch(72.14% 0.12467 81.39)",
+          "oklch(83.57% 0.12467 81.39)",
+          "oklch(95.00% 0.12467 81.39)"
+        ]
+      },
+      "warning-light": {
+        "role": "secondary",
+        "displayName": "提醒浅底",
+        "canonical": "#fff9e6",
+        "tonalRamp": [
+          "oklch(15.00% 0.02571 92.39)",
+          "oklch(26.43% 0.02571 92.39)",
+          "oklch(37.86% 0.02571 92.39)",
+          "oklch(49.29% 0.02571 92.39)",
+          "oklch(60.71% 0.02571 92.39)",
+          "oklch(72.14% 0.02571 92.39)",
+          "oklch(83.57% 0.02571 92.39)",
+          "oklch(95.00% 0.02571 92.39)"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "淡灰绿画布",
+        "canonical": "#f5f7f5",
+        "tonalRamp": [
+          "oklch(15.00% 0.00338 145.55)",
+          "oklch(26.43% 0.00338 145.55)",
+          "oklch(37.86% 0.00338 145.55)",
+          "oklch(49.29% 0.00338 145.55)",
+          "oklch(60.71% 0.00338 145.55)",
+          "oklch(72.14% 0.00338 145.55)",
+          "oklch(83.57% 0.00338 145.55)",
+          "oklch(95.00% 0.00338 145.55)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "白色工作表面",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 0.00)",
+          "oklch(26.43% 0.00000 0.00)",
+          "oklch(37.86% 0.00000 0.00)",
+          "oklch(49.29% 0.00000 0.00)",
+          "oklch(60.71% 0.00000 0.00)",
+          "oklch(72.14% 0.00000 0.00)",
+          "oklch(83.57% 0.00000 0.00)",
+          "oklch(95.00% 0.00000 0.00)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "正文灰",
+        "canonical": "#2d3436",
+        "tonalRamp": [
+          "oklch(15.00% 0.01025 216.79)",
+          "oklch(26.43% 0.01025 216.79)",
+          "oklch(37.86% 0.01025 216.79)",
+          "oklch(49.29% 0.01025 216.79)",
+          "oklch(60.71% 0.01025 216.79)",
+          "oklch(72.14% 0.01025 216.79)",
+          "oklch(83.57% 0.01025 216.79)",
+          "oklch(95.00% 0.01025 216.79)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "辅助灰",
+        "canonical": "#636e72",
+        "tonalRamp": [
+          "oklch(15.00% 0.01477 221.59)",
+          "oklch(26.43% 0.01477 221.59)",
+          "oklch(37.86% 0.01477 221.59)",
+          "oklch(49.29% 0.01477 221.59)",
+          "oklch(60.71% 0.01477 221.59)",
+          "oklch(72.14% 0.01477 221.59)",
+          "oklch(83.57% 0.01477 221.59)",
+          "oklch(95.00% 0.01477 221.59)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "次级灰",
+        "canonical": "#626d73",
+        "tonalRamp": [
+          "oklch(15.00% 0.01639 231.46)",
+          "oklch(26.43% 0.01639 231.46)",
+          "oklch(37.86% 0.01639 231.46)",
+          "oklch(49.29% 0.01639 231.46)",
+          "oklch(60.71% 0.01639 231.46)",
+          "oklch(72.14% 0.01639 231.46)",
+          "oklch(83.57% 0.01639 231.46)",
+          "oklch(95.00% 0.01639 231.46)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "灰绿边线",
+        "canonical": "#e4e9e5",
+        "tonalRamp": [
+          "oklch(15.00% 0.00755 151.88)",
+          "oklch(26.43% 0.00755 151.88)",
+          "oklch(37.86% 0.00755 151.88)",
+          "oklch(49.29% 0.00755 151.88)",
+          "oklch(60.71% 0.00755 151.88)",
+          "oklch(72.14% 0.00755 151.88)",
+          "oklch(83.57% 0.00755 151.88)",
+          "oklch(95.00% 0.00755 151.88)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "正文",
+        "purpose": "全局系统无衬线阅读基准。"
+      },
+      "card-title": {
+        "displayName": "商品名称",
+        "purpose": "库存卡片主要名称。"
+      },
+      "metric": {
+        "displayName": "统计数字",
+        "purpose": "首页统计总数。"
+      },
+      "label": {
+        "displayName": "表单标签",
+        "purpose": "紧凑字段名称。"
+      },
+      "button": {
+        "displayName": "按钮",
+        "purpose": "中粗操作文字。"
+      },
+      "quick-text": {
+        "displayName": "快捷文本",
+        "purpose": "等宽粘贴区，便于逐行核对。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-xs",
+        "value": "0 1px 2px rgba(0,0,0,0.04)",
+        "purpose": "静止卡片、字段和按钮。"
+      },
+      {
+        "name": "shadow-sm",
+        "value": "0 2px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)",
+        "purpose": "卡片和按钮反馈、选中分段。"
+      },
+      {
+        "name": "shadow",
+        "value": "0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.06)",
+        "purpose": "现有 CSS 中定义的中等阴影，未提升为默认表面规则。"
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 8px 16px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.04)",
+        "purpose": "现有 CSS 中定义的较高阴影。"
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 16px 32px rgba(0,0,0,0.08), 0 8px 16px rgba(0,0,0,0.04)",
+        "purpose": "提示和底部弹层。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition",
+        "value": "0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "既有控件状态变化。"
+      },
+      {
+        "name": "button-press",
+        "value": "transform 0.1s ease; transform: scale(0.96)",
+        "purpose": "既有按钮按下反馈。"
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) { animation: none; transition: none; scroll-behavior: auto; }",
+        "purpose": "减少动态效果偏好下停用动效。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "small-phone-max",
+        "value": "359px"
+      },
+      {
+        "name": "comfortable",
+        "value": "640px"
+      },
+      {
+        "name": "stock-actions-max",
+        "value": "767px"
+      },
+      {
+        "name": "opening-fields",
+        "value": "768px"
+      },
+      {
+        "name": "desktop-sidebar",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主要按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "深绿主要操作，悬停加深。",
+      "html": "<button class=\"ds-btn ds-primary\">保存</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border: none; border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: all var(--transition, 0.2s cubic-bezier(0.4,0,0.2,1)); position: relative; overflow: hidden; } .ds-btn::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.2); opacity: 0; transition: opacity var(--transition, 0.2s); } .ds-btn:hover::after { opacity: 1; } .ds-btn:active { transform: scale(0.96); transition: transform 0.1s ease; } .ds-btn:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-btn:disabled { cursor: wait; opacity: 0.65; } .ds-primary { background: var(--color-primary-gradient, #155b36); color: white; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); } .ds-primary:hover { background: var(--color-primary-dark, #0e4327); box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)); }"
+    },
+    {
+      "name": "描边按钮",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "白底次要操作，悬停浅绿。",
+      "html": "<button class=\"ds-btn ds-outline\">取消</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border: none; border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: all var(--transition, 0.2s cubic-bezier(0.4,0,0.2,1)); position: relative; overflow: hidden; } .ds-btn::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.2); opacity: 0; transition: opacity var(--transition, 0.2s); } .ds-btn:hover::after { opacity: 1; } .ds-btn:active { transform: scale(0.96); transition: transform 0.1s ease; } .ds-btn:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-btn:disabled { cursor: wait; opacity: 0.65; } .ds-outline { background: var(--color-surface, #fff); color: var(--color-text, #2d3436); border: 1.5px solid var(--color-border, #e4e9e5); } .ds-outline:hover { border-color: var(--color-primary, #155b36); color: var(--color-primary, #155b36); background: var(--color-primary-light, #e6f1e9); }"
+    },
+    {
+      "name": "入库按钮",
+      "kind": "button",
+      "refersTo": "button-success",
+      "description": "保留入库语义绿。",
+      "html": "<button class=\"ds-btn ds-success\">保存入库</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border: none; border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: all var(--transition, 0.2s cubic-bezier(0.4,0,0.2,1)); position: relative; overflow: hidden; } .ds-btn::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.2); opacity: 0; transition: opacity var(--transition, 0.2s); } .ds-btn:hover::after { opacity: 1; } .ds-btn:active { transform: scale(0.96); transition: transform 0.1s ease; } .ds-btn:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-btn:disabled { cursor: wait; opacity: 0.65; } .ds-success { background: #216b45; color: white; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); }"
+    },
+    {
+      "name": "出库按钮",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "保留出库与危险操作红。",
+      "html": "<button class=\"ds-btn ds-danger\">保存出库</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border: none; border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: all var(--transition, 0.2s cubic-bezier(0.4,0,0.2,1)); position: relative; overflow: hidden; } .ds-btn::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.2); opacity: 0; transition: opacity var(--transition, 0.2s); } .ds-btn:hover::after { opacity: 1; } .ds-btn:active { transform: scale(0.96); transition: transform 0.1s ease; } .ds-btn:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; } .ds-btn:disabled { cursor: wait; opacity: 0.65; } .ds-danger { background: #b94b32; color: white; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); }"
+    },
+    {
+      "name": "业务卡片",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "白色卡片承载业务名称与规格，不重复品牌标识。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-name\">商品名称</div><div class=\"ds-spec\">规格 · 单位</div></div>",
+      "css": ".ds-card { background: var(--color-surface, #fff); color: var(--color-text, #2d3436); border: 1px solid var(--color-border, #e4e9e5); border-radius: var(--radius, 12px); padding: 14px 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); font-family: var(--font-sans, sans-serif); transition: all var(--transition, 0.2s); } .ds-card:active { transform: scale(0.985); border-color: var(--color-primary, #155b36); box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)); } .ds-name { font-size: 0.95rem; font-weight: 600; line-height: 1.4; } .ds-spec { margin-top: 2px; font-size: 0.75rem; color: var(--color-text-secondary, #636e72); } @media (min-width: 640px) { .ds-card { padding: 18px 22px; } }"
+    },
+    {
+      "name": "表单字段",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "白底字段，聚焦绿边与浅绿光圈。",
+      "html": "<label class=\"ds-label\" for=\"ds-name\">商品名称</label><input class=\"ds-input\" id=\"ds-name\" placeholder=\"商品名称\">",
+      "css": ".ds-label { display: block; color: var(--color-text-secondary, #636e72); font-family: var(--font-sans, sans-serif); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.01em; margin-bottom: 6px; } .ds-input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--color-border, #e4e9e5); border-radius: var(--radius-sm, 8px); font-family: var(--font-sans, sans-serif); font-size: 0.95rem; background: var(--color-surface, #fff); transition: all var(--transition, 0.2s); box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04)); caret-color: var(--color-primary, #155b36); } .ds-input:hover { border-color: #c4c8d0; } .ds-input:focus { outline: none; border-color: var(--color-primary, #155b36); box-shadow: 0 0 0 4px rgba(21,91,54,0.1); } .ds-input:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; }"
+    },
+    {
+      "name": "桌面导航项",
+      "kind": "nav",
+      "description": "桌面侧栏使用浅绿选中态；手机由底部导航承担。预览省略存量 emoji。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"主导航\"><button class=\"ds-nav-item ds-active\" aria-current=\"page\">库存</button><button class=\"ds-nav-item\">入库</button></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 8px; width: 152px; background: var(--color-surface, #fff); } .ds-nav-item { min-height: 48px; padding: 12px 16px; border: 0; border-radius: 8px; text-align: left; color: var(--color-text-secondary, #636e72); background: none; font-family: var(--font-sans, sans-serif); font-size: 1rem; font-weight: 500; cursor: pointer; transition: all var(--transition, 0.2s); } .ds-nav-item.ds-active { background: var(--color-primary-light, #e6f1e9); color: var(--color-primary, #155b36); font-weight: 600; } .ds-nav-item:active { transform: scale(0.9); } .ds-nav-item:focus-visible { outline: 3px solid var(--color-primary, #155b36); outline-offset: 3px; }"
+    },
+    {
+      "name": "成功徽章",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "只表达状态，不承担可点击操作。",
+      "html": "<span class=\"ds-badge\">已匹配</span>",
+      "css": ".ds-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-family: var(--font-sans, sans-serif); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; background: var(--color-success-light, #e8f3eb); color: var(--color-success, #26714b); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "门店绿，白色工作台",
+    "overview": "这是现有进销存操作界面的轻量品牌延续。名称使用“三胜达进销存”，安装后的短名称使用“三胜达库存”。只取用户提供门店招牌中的深绿与“三胜达”椭圆徽记；品牌留在页头、桌面侧栏与应用图标，库存、表单和记录仍以清晰的白色卡片呈现。\n\n本规范从完成后的 `css/style.css`、`index.html` 和 `manifest.json` 提取。没有重排既有业务信息或改写操作文案。既有 emoji 业务标记保持原样，它们是存量内容，不作为新增图标体系的规范。未建立缺失的 PRODUCT.md，也不从招牌推断额外业务承诺。",
+    "keyCharacteristics": [
+      "深绿品牌框架，白色业务表面。",
+      "商品、数量、状态和操作保持既有卡片层级。",
+      "手机底部导航，桌面左侧导航。",
+      "椭圆徽记小范围出现，不带门店电话、地址或整张招牌。"
+    ],
+    "rules": [
+      {
+        "name": "The Light Branding Rule",
+        "body": "品牌用于界面框架和小徽记，保留白色业务区域与原有信息密度。",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Color Rule",
+        "body": "出库和危险操作继续使用红色；不能为了统一品牌而将所有状态改成绿色。",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "**Do** 使用已生成的“三胜达”徽记和现有深绿令牌，保持小范围品牌识别。",
+      "**Do** 保留白色卡片、业务信息层级、语义状态色和现有操作文案。",
+      "**Do** 在手机库存卡中把操作放到第二行并显示文字标签。",
+      "**Do** 尊重安全区、可见键盘焦点和减少动态效果偏好。"
+    ],
+    "donts": [
+      "**Don't** 在业务卡片上重复放大标识，或把整张门店招牌铺作背景。",
+      "**Don't** 把电话号码、地址和招牌其他宣传文字加入应用标识。",
+      "**Don't** 用品牌绿替换出库、危险或错误的红色语义。",
+      "**Don't** 将本轮保留的 emoji 与存量动效推广为新增设计系统规则。"
+    ]
+  }
+}
