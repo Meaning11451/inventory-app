@@ -1132,7 +1132,7 @@ input[type="file"].form-input::file-selector-button:hover {
 .header-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-icon { display: block; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; }
 .header-brand-copy { display: grid; gap: 2px; min-width: 0; }
-.header-brand-name { color: var(--color-primary-dark); font-family: "Songti SC", "STSong", "SimSun", serif; font-size: 1.25rem; font-weight: 700; line-height: 1.15; letter-spacing: 0.08em; }
+.header-brand-name { color: var(--color-primary-dark); font-family: "Songti SC", "STSong", "SimSun", serif; font-size: 1.25rem; font-weight: 700; line-height: 1.15; letter-spacing: 0.08em; white-space: nowrap; }
 .store-descriptor { color: var(--color-text-secondary); font-size: 0.7rem; line-height: 1.2; letter-spacing: 0.02em; white-space: nowrap; }
 .app-header h1 { margin-left: 3px; padding-left: 12px; border-left: 1px solid var(--color-border); font-size: 1.25rem; font-weight: 600; line-height: 1.4; letter-spacing: 0; white-space: nowrap; }
 .header-actions { gap: 8px; flex-shrink: 0; }
@@ -1166,12 +1166,12 @@ input, textarea { caret-color: var(--color-primary); }
   .header-brand > img, .header-brand-copy { display: none; }
   .app-header h1 { margin: 0; padding: 0; border: 0; font-size: 1.25rem; font-weight: 650; }
 }
-@media (max-width: 359px) {
+@media (max-width: 374px) {
   .app-header { padding-inline: 12px; }
-  .header-brand { gap: 7px; }
-  .brand-icon { display: none; }
+  .header-brand { gap: 6px; }
+  .brand-icon { width: 30px; height: 30px; flex-basis: 30px; }
   .header-brand-name { font-size: 1.1rem; }
-  .app-header h1 { padding-left: 8px; margin-left: 0; }
+  .app-header h1 { padding-left: 8px; margin-left: 0; font-size: 1.1rem; }
   .install-button { width: 44px; padding-inline: 0; }
   .install-button span { display: none; }
   .sync-status { font-size: 0.7rem; padding-inline: 0; }

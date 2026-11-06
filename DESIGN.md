@@ -178,7 +178,7 @@ components:
 - **正文**（body）：全局阅读基准；表单字段为（0.95rem）。
 - **标签与按钮**（label / button）：标签保留较紧凑层级，按钮用中粗字重。
 - **快捷文本**（quick-text）：较宽行距便于逐行核对。
-- **品牌与页标题**：品牌名为（1.25rem，700，0.08em 字距），359px 及以下缩为 1.1rem；页标题为（1.25rem，手机 600 / 桌面 650）。品牌描述为 0.7rem。
+- **品牌与页标题**：品牌名为（1.25rem，700，0.08em 字距），保持单行；页标题为（1.25rem，手机 600 / 桌面 650）。374px 及以下品牌名与页标题均缩为 1.1rem。品牌描述为 0.7rem。
 
 ## Layout
 
@@ -226,7 +226,7 @@ components:
 
 ### Brand assets
 
-已生成的“三胜达”椭圆徽记用于（34px）页头与侧栏辅助图标，以及 favicon、Apple Touch Icon 和 PWA 图标；359px 及以下隐藏页头徽记以容纳品牌字与操作。浏览器与 PWA theme-color 为白色。仅使用品牌文字与绿色，不纳入电话号码、地址或整张招牌。生成来源见 `icons/brand-provenance.json`，完整提示词见 `icons/brand-prompt.txt`；高分辨率母图保留在本地 `.impeccable/assets/brand-master.png`，不随网站发布。
+已生成的“三胜达”椭圆徽记用于（34px）页头与侧栏辅助图标，以及 favicon、Apple Touch Icon 和 PWA 图标；374px 及以下保留（30px）页头徽记，品牌区间距缩为（6px），继续显示品牌描述与当前页标题，安装按钮保留（44px）触控区域。浏览器与 PWA theme-color 为白色。仅使用品牌文字与绿色，不纳入电话号码、地址或整张招牌。生成来源见 `icons/brand-provenance.json`，完整提示词见 `icons/brand-prompt.txt`；高分辨率母图保留在本地 `.impeccable/assets/brand-master.png`，不随网站发布。
 
 ## Do's and Don'ts
 
