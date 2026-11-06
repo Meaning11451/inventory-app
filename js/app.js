@@ -10,6 +10,7 @@ import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
 import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js';
 import { createSaveIntents } from './save-intent.js';
+import { initBackup } from './backup.js';
 const saveIntents = createSaveIntents();
 
 // 全局暴露
@@ -33,6 +34,7 @@ async function initApp() {
   bindEvents();
   initEntryPreviewGuards();
   initInstallButton();
+  initBackup({ api: DB, getPendingCount });
   initOpeningImport({ api: DB, onChanged: async () => { setState('products', []); await renderStock(); await renderDashboard(); } });
 
   initSync({

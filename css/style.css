@@ -1079,3 +1079,13 @@ input[type="file"].form-input::file-selector-button:hover {
 @media (min-width: 768px) {
   .opening-file-fields { grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr); }
 }
+
+/* Complete ledger backup */
+.backup-tools { display: grid; gap: 12px; margin: 4px 0 24px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.backup-tools h2 { font-size: 1rem; font-weight: 600; }
+.backup-tools .form-hint { margin-top: 4px; }
+.backup-tools > .btn { min-height: 44px; }
+.backup-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.backup-status:empty { display: none; }
+.backup-status.backup-error { color: #a83f2b; }
+@media (min-width: 640px) { .backup-tools { grid-template-columns: minmax(0, 1fr) auto; align-items: center; } }

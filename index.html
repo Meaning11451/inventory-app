@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
   <title>进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=12">
+  <link rel="stylesheet" href="./css/style.css?v=13">
 </head>
 <body>
 
@@ -70,6 +70,15 @@
           👥 客户
         </button>
       </div>
+
+      <section class="backup-tools" aria-label="账本备份">
+        <div>
+          <h2>备份到本机</h2>
+          <p class="form-hint">保留商品、客户、库存和全部进出库记录。建议定期保存一份。</p>
+        </div>
+        <button id="exportBackup" class="btn btn-outline" type="button">下载完整备份</button>
+        <p id="backupStatus" class="form-hint backup-status" role="status" aria-live="polite"></p>
+      </section>
 
       <!-- 低库存预警 -->
       <div class="section-title">⚠️ 低库存预警</div>
@@ -403,6 +412,6 @@
   <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=12"></script>
+  <script type="module" src="./js/app.js?v=13"></script>
 </body>
 </html>

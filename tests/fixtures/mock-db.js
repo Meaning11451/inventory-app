@@ -55,3 +55,9 @@ export async function deleteProduct(id) {
 export async function deleteCustomer(id) { const index=customers.findIndex(row=>row.id===id);if(index>=0)customers.splice(index,1); }
 export async function deleteInboundRecord(id) { const index=inbound.findIndex(row=>row.id===id);if(index>=0)inbound.splice(index,1);updateCounter(); }
 export async function deleteOutboundRecord(id) { const index=outbound.findIndex(row=>row.id===id);if(index>=0)outbound.splice(index,1);updateCounter(); }
+
+export async function exportInventoryBackup() {
+  const initial=[...baseline].filter(id=>products.some(product=>product.id===id)).map(id=>({id:`baseline-${id}`,product_id:id,customer_id:null,quantity:100,note:OPENING_NOTE,recorded_at:date}));
+  const tables={products:structuredClone(products),customers:structuredClone(customers),inbound_records:structuredClone([...initial,...inbound]),outbound_records:structuredClone(outbound),current_stock:await fetchCurrentStock()};
+  return {format:'inventory-app-backup',version:1,kind:'application-data',exported_at:new Date().toISOString(),tables,counts:Object.fromEntries(Object.entries(tables).map(([name,rows])=>[name,rows.length]))};
+}

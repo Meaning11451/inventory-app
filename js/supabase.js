@@ -110,6 +110,12 @@ export async function fetchCurrentStock(search = '') {
   return (await fetchAllRows('current_stock', search)).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
 }
 
+export async function exportInventoryBackup() {
+  const { data, error } = await getClient().rpc('export_inventory_backup');
+  if (error) throw error;
+  return { ...data, source_project: new URL(SUPABASE_URL).hostname.split('.')[0] };
+}
+
 // ==================== 期初库存（仅由确认导入按钮调用） ====================
 
 export async function fetchOpeningRecords(ids) {
