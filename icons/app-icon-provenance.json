@@ -1,0 +1,22 @@
+{
+  "origin": "User-supplied San Sheng Da trademark image, provided 2026-11-06. Original lettering, colors and border retained; outer blank margin cropped and artwork resized proportionally on white.",
+  "source_sha256": "fbac8921f7b7a2a55721270af1b22ae0f770f35551ef466c2c99e62e85f2dbf0",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "crop": {
+    "left": 165,
+    "top": 614,
+    "width": 1719,
+    "height": 865
+  },
+  "processing": "Sharp: proportional resize and centered white square. Maskable emblem stays inside the central 80% safe circle. No generated or redrawn artwork.",
+  "outputs": [
+    "app-icon-180.png",
+    "app-icon-192.png",
+    "app-icon-512.png",
+    "app-icon-maskable-512.png"
+  ],
+  "scope": "Installed desktop and home-screen icons only; existing in-page branding and favicon retained."
+}

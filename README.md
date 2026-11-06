@@ -68,15 +68,21 @@ git push -u origin main
 
 ### 5. 预览与构建品牌图标
 
-在浏览器中打开 `icons/generate.html`，可预览和下载现有“三胜达”图标。图标只轻量采用招牌的绿色与椭圆徽记，不含电话、地址和整张招牌。
+安装到桌面或手机主屏幕的图标使用用户提供的绿色、黄色 SAN SHENG DA 原商标，保留原有文字、颜色和边框，不重画。重新构建命令为：
 
-需要从已选定的高分辨率母图重新生成尺寸时：
+```sh
+node scripts/build-app-icons.mjs <source.jpg>
+```
+
+将 `<source.jpg>` 替换为原图路径；当前原图保存在 `.impeccable/assets/app-icon-source.jpg`，不随网站发布。脚本的裁切坐标针对这张 2048×2048 原图设置，仅裁去外围空白，再按原比例缩放并居中放在白底上；换用其他原图时须重新核对裁切范围。输出为 `icons/app-icon-180.png`、`icons/app-icon-192.png`、`icons/app-icon-512.png` 和 `icons/app-icon-maskable-512.png`；maskable 版本的商标留在中央安全圆内。来源与处理记录保存在 `icons/app-icon-provenance.json`，输出 PNG 同时嵌入来源元数据。
+
+网页内部的品牌徽记和浏览器 favicon 沿用原有素材。在浏览器中打开 `icons/generate.html`，可预览和下载这套徽记；它轻量采用招牌的绿色与椭圆形状，不含电话、地址和整张招牌。需要从其高分辨率母图重新生成尺寸时：
 
 ```sh
 npm run icons:build -- <master.png>
 ```
 
-将 `<master.png>` 替换为母图路径。脚本用 Sharp 缩放图标并生成带安全留白的 maskable 版本，不重画文字。当前图像由 `image_gen.imagegen` 生成，完整提示词和来源记录分别保存在 `icons/brand-prompt.txt`、`icons/brand-provenance.json`；已发布 PNG 嵌入了来源元数据，重新构建后也需保留该记录。本地母图位于 `.impeccable/assets/brand-master.png`，不随网站发布。
+将 `<master.png>` 替换为母图路径。这套网页品牌素材由 `image_gen.imagegen` 生成，完整提示词和来源记录分别保存在 `icons/brand-prompt.txt`、`icons/brand-provenance.json`；其 PNG 嵌入来源元数据，重新构建后也需保留该记录。本地母图位于 `.impeccable/assets/brand-master.png`，不随网站发布。这套素材不再用于安装后的桌面或主屏幕图标。
 
 ## 📱 快捷录入格式
 
@@ -177,7 +183,9 @@ Excel 读取组件沿用 SheetJS CE 0.18.5，随网站一并发布，来源和�
 - **电脑**：用 Edge / Chrome 打开网址。浏览器提供安装能力时，点击页头“添加到桌面”，按提示安装；以后从桌面图标打开独立窗口。没有安装入口时，可直接用网页。
 - **iPhone**：用 Safari 打开网址，点击“分享”→“添加到主屏幕”→“添加”；以后点主屏幕上的“三胜达库存”图标打开。
 
-这是同一个可安装网页（PWA），没有独立的 Windows `.exe` 或 App Store 版本。安装后查询最新库存、保存和同步仍需要网络；离线时可能显示缓存数据。若已有快捷方式仍显示旧图标，移除旧快捷方式后重新添加即可。
+这是同一个可安装网页（PWA），没有独立的 Windows `.exe` 或 App Store 版本。安装后查询最新库存、保存和同步仍需要网络；离线时可能显示缓存数据。
+
+若安装后的图标仍显示旧样式：iPhone 可能需要移除原来的主屏幕快捷方式，再用 Safari 重新添加；Android 的更新行为取决于浏览器，较新的 Chrome 可能提示确认图标更新，需要立即替换时可移除后重新添加。移除和重新添加快捷方式不会清空云端账本。
 
 ## 检查代码
 
