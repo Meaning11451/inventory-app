@@ -1,1 +1,1 @@
-{"name":"inventory-app","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs"}}
+{"name":"inventory-app","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs"},"devDependencies":{"fake-indexeddb":"^6.2.7","jsdom":"^26.1.0"}}

@@ -52,7 +52,7 @@ export async function addToQueue(operationType, payload) {
       synced: 0
     });
     request.onsuccess = () => {
-      updatePendingCount();
+      updatePendingCount().catch(()=>{});
       resolve(request.result);
     };
     request.onerror = () => reject(request.error);
@@ -102,7 +102,7 @@ async function clearSyncedItems() {
       const tx = store.transaction;
       toDelete.forEach(item => store.delete(item.id));
       tx.oncomplete = () => {
-        updatePendingCount();
+        updatePendingCount().catch(()=>{});
         resolve();
       };
       tx.onerror = () => reject(tx.error);
@@ -127,7 +127,15 @@ async function updatePendingCount() {
  * 处理离线队列中的所有待同步操作
  * 需要传入执行函数映射
  */
+let runningDrain = null;
 export async function processQueue(executors) {
+  if (runningDrain) return runningDrain;
+  runningDrain = drainQueue(executors);
+  try { return await runningDrain; }
+  finally { runningDrain = null; }
+}
+
+async function drainQueue(executors) {
   const items = await getPendingItems();
   if (items.length === 0) return { success: 0, fail: 0 };
 
@@ -137,9 +145,8 @@ export async function processQueue(executors) {
   for (const item of items) {
     try {
       const fn = executors[item.operationType];
-      if (fn) {
-        await fn(item.payload);
-      }
+      if (typeof fn !== 'function') throw new Error('无法识别这条待同步操作，已保留待处理');
+      await fn(item.payload);
       await markAsSynced(item.id);
       success++;
     } catch (err) {
@@ -150,7 +157,7 @@ export async function processQueue(executors) {
 
   // 清理已同步的
   await clearSyncedItems();
-  updatePendingCount();
+  updatePendingCount().catch(()=>{});
 
   return { success, fail };
 }
@@ -163,8 +170,9 @@ export function initSync(executors) {
     document.getElementById('offlineBanner')?.classList.remove('show');
     document.getElementById('syncStatus')?.classList.remove('offline');
     document.getElementById('syncStatus')?.classList.add('online');
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='🟢 在线';
 
-    const result = await processQueue(executors);
+    const result = await processQueue(executors).catch(()=>({success:0,fail:1}));
     if (result.success > 0 || result.fail > 0) {
       const msg = result.fail === 0
         ? `已同步 ${result.success} 条离线记录`
@@ -181,6 +189,7 @@ export function initSync(executors) {
     document.getElementById('offlineBanner')?.classList.add('show');
     document.getElementById('syncStatus')?.classList.add('offline');
     document.getElementById('syncStatus')?.classList.remove('online');
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='🔴 离线';
   };
 
   window.addEventListener('online', handleOnline);
@@ -191,5 +200,5 @@ export function initSync(executors) {
     handleOffline();
   }
 
-  updatePendingCount();
+  updatePendingCount().catch(()=>{});
 }

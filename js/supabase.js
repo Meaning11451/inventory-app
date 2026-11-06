@@ -72,12 +72,7 @@ export async function deleteProduct(id) {
 // ==================== 客户 ====================
 
 export async function fetchCustomers() {
-  const { data, error } = await getClient()
-    .from('customers')
-    .select('*')
-    .order('name');
-  if (error) throw error;
-  return data;
+  return (await fetchAllRows('customers')).sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'));
 }
 
 export async function createCustomer({ name, phone = '', note = '' }) {
@@ -159,8 +154,9 @@ export async function fetchProductStock(productId) {
 
 // ==================== 入库 ====================
 
-export async function createInbound({ product_id, customer_id = null, customer_name = '', quantity, unit_price = null, note = '', recorded_at = null }) {
+export async function createInbound({ id = crypto.randomUUID(), product_id, customer_id = null, customer_name = '', quantity, unit_price = null, note = '', recorded_at = null }) {
   const record = {
+    id,
     product_id,
     customer_id,
     customer_name,
@@ -171,15 +167,15 @@ export async function createInbound({ product_id, customer_id = null, customer_n
   };
   const { data, error } = await getClient()
     .from('inbound_records')
-    .insert(record)
-    .select()
-    .single();
+    .upsert(record, { onConflict: 'id', ignoreDuplicates: true })
+    .select();
   if (error) throw error;
-  return data;
+  return data?.[0] || record;
 }
 
 export async function batchCreateInbound(items) {
   const records = items.map(item => ({
+    id: item.id || crypto.randomUUID(),
     product_id: item.product_id,
     customer_id: item.customer_id || null,
     customer_name: item.customer_name || '',
@@ -190,29 +186,13 @@ export async function batchCreateInbound(items) {
   }));
   const { data, error } = await getClient()
     .from('inbound_records')
-    .insert(records)
+    .upsert(records, { onConflict: 'id', ignoreDuplicates: true })
     .select();
   if (error) throw error;
   return data;
 }
 
-export async function fetchInboundRecords({ from, to, customerId, productId, excludeOpening = false } = {}) {
-  let query = getClient()
-    .from('inbound_records')
-    .select('*, products(name, unit)')
-    .order('recorded_at', { ascending: false })
-    .order('created_at', { ascending: false });
-
-  if (from) query = query.gte('recorded_at', from);
-  if (to) query = query.lte('recorded_at', to);
-  if (customerId) query = query.eq('customer_id', customerId);
-  if (productId) query = query.eq('product_id', productId);
-  if (excludeOpening) query = query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
-
-  const { data, error } = await query.limit(200);
-  if (error) throw error;
-  return data;
-}
+export async function fetchInboundRecords(options = {}) { return fetchLedgerRecords('inbound',options); }
 
 export async function deleteInboundRecord(id) {
   const { error } = await getClient()
@@ -224,8 +204,9 @@ export async function deleteInboundRecord(id) {
 
 // ==================== 出库 ====================
 
-export async function createOutbound({ product_id, customer_id = null, customer_name = '', quantity, unit_price = null, note = '', recorded_at = null }) {
+export async function createOutbound({ id = crypto.randomUUID(), product_id, customer_id = null, customer_name = '', quantity, unit_price = null, note = '', recorded_at = null }) {
   const record = {
+    id,
     product_id,
     customer_id,
     customer_name,
@@ -236,15 +217,15 @@ export async function createOutbound({ product_id, customer_id = null, customer_
   };
   const { data, error } = await getClient()
     .from('outbound_records')
-    .insert(record)
-    .select()
-    .single();
+    .upsert(record, { onConflict: 'id', ignoreDuplicates: true })
+    .select();
   if (error) throw error;
-  return data;
+  return data?.[0] || record;
 }
 
 export async function batchCreateOutbound(items) {
   const records = items.map(item => ({
+    id: item.id || crypto.randomUUID(),
     product_id: item.product_id,
     customer_id: item.customer_id || null,
     customer_name: item.customer_name || '',
@@ -255,29 +236,13 @@ export async function batchCreateOutbound(items) {
   }));
   const { data, error } = await getClient()
     .from('outbound_records')
-    .insert(records)
+    .upsert(records, { onConflict: 'id', ignoreDuplicates: true })
     .select();
   if (error) throw error;
   return data;
 }
 
-export async function fetchOutboundRecords({ from, to, customerId, productId, excludeOpening = false } = {}) {
-  let query = getClient()
-    .from('outbound_records')
-    .select('*, products(name, unit)')
-    .order('recorded_at', { ascending: false })
-    .order('created_at', { ascending: false });
-
-  if (from) query = query.gte('recorded_at', from);
-  if (to) query = query.lte('recorded_at', to);
-  if (customerId) query = query.eq('customer_id', customerId);
-  if (productId) query = query.eq('product_id', productId);
-  if (excludeOpening) query = query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
-
-  const { data, error } = await query.limit(200);
-  if (error) throw error;
-  return data;
-}
+export async function fetchOutboundRecords(options = {}) { return fetchLedgerRecords('outbound',options); }
 
 export async function deleteOutboundRecord(id) {
   const { error } = await getClient()
@@ -309,4 +274,26 @@ export function subscribeStockChanges(onUpdate) {
       () => onUpdate()
     )
     .subscribe();
+}
+
+// Fetch every matching business row so totals and history do not silently stop at 200.
+async function fetchLedgerRecords(direction,{from,to,customerId,productId,excludeOpening=false,limit=Infinity}={}) {
+  const rows=[];
+  const maxRows=Number.isFinite(limit) ? Math.max(0,Math.floor(limit)) : Infinity;
+  while(rows.length < maxRows) {
+    const size=Math.min(500,maxRows-rows.length);
+    let query=getClient().from(`${direction}_records`).select('*, products(name, unit)')
+      .order('recorded_at',{ascending:false}).order('created_at',{ascending:false}).order('id')
+      .range(rows.length,rows.length+size-1);
+    if(from)query=query.gte('recorded_at',from);
+    if(to)query=query.lte('recorded_at',to);
+    if(customerId)query=query.eq('customer_id',customerId);
+    if(productId)query=query.eq('product_id',productId);
+    if(excludeOpening)query=query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
+    const {data,error}=await query;
+    if(error)throw error;
+    rows.push(...data);
+    if(data.length < size)break;
+  }
+  return rows;
 }

@@ -4,11 +4,12 @@ const QUANTITY = '[+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
 const normalizeDigits = text => text.replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 const nameKey = name => String(name ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 
+export function matchingProducts(name, products = []) {
+  const key=nameKey(name);
+  return key ? products.filter(product=>nameKey(product.name)===key) : [];
+}
 export function findProduct(name, products = []) {
-  const exact = products.find(p => p.name === name);
-  if (exact) return exact;
-  const key = nameKey(name);
-  const matches = key ? products.filter(p => nameKey(p.name) === key) : [];
+  const matches=matchingProducts(name,products);
   return matches.length === 1 ? matches[0] : null;
 }
 

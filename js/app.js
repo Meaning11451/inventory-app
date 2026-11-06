@@ -4,10 +4,13 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer } from './parser.js';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts } from './parser.js';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
+import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js';
+import { createSaveIntents } from './save-intent.js';
+const saveIntents = createSaveIntents();
 
 // 全局暴露
 window._showToast = showToast;
@@ -39,11 +42,12 @@ async function initApp() {
     batchCreateOutbound: (p) => DB.batchCreateOutbound(p)
   });
 
-  const pendingCount = await getPendingCount();
+  const pendingCount = await getPendingCount().catch(()=>0);
   setState('pendingSyncCount', pendingCount);
 
   // 实时订阅：数据库变化时自动刷新当前页面
   DB.subscribeStockChanges(() => {
+    setState('products',[]);setState('customers',null);
     const tab = getState('currentTab');
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
     if (tab === 'dashboard') renderDashboard();
@@ -81,6 +85,7 @@ async function switchTab(tabName) {
 }
 
 async function refreshCurrentTab() {
+  try {
   const tab = getState('currentTab');
   if (tab === 'dashboard') await renderDashboard();
   else if (tab === 'stock') await renderStock();
@@ -88,6 +93,7 @@ async function refreshCurrentTab() {
   else if (tab === 'outbound') await renderOutboundForm();
   else if (tab === 'customers') await renderCustomers();
   else if (tab === 'records') await renderRecords();
+  } catch(error) { setDatabaseStatus(false);showToast('加载失败，请检查网络后重试：'+error.message,'error'); }
 }
 
 // ==================== Toast ====================
@@ -137,6 +143,11 @@ function bindEvents() {
   document.getElementById('outboundExcelFile').addEventListener('change', handleOutboundExcelImport);
   document.getElementById('outboundExcelSubmit').addEventListener('click', handleOutboundExcelSubmit);
 
+  document.getElementById('customerQuickText').addEventListener('input',()=>{
+    delete document.getElementById('customerQuickText').dataset.resolved;
+    document.getElementById('customerParsePreview').innerHTML='';
+    document.getElementById('customerQuickSubmit').style.display='none';
+  });
   // 客户快捷 & Excel
   document.getElementById('customerQuickParse').addEventListener('click', handleCustomerQuickParse);
   document.getElementById('customerQuickSubmit').addEventListener('click', handleCustomerQuickSubmit);
@@ -225,16 +236,18 @@ function switchCustomerMode(mode) {
 async function renderDashboard() {
   try {
     const [products, customers, stockData] = await Promise.all([
-      DB.fetchProducts().catch(() => []),
-      DB.fetchCustomers().catch(() => []),
-      DB.fetchCurrentStock().catch(() => [])
+      DB.fetchProducts(),
+      DB.fetchCustomers(),
+      DB.fetchCurrentStock()
     ]);
 
     const day = today();
     const [inToday, outToday] = await Promise.all([
-      DB.fetchInboundRecords({ from: day, to: day, excludeOpening: true }).catch(() => []),
-      DB.fetchOutboundRecords({ from: day, to: day, excludeOpening: true }).catch(() => [])
+      DB.fetchInboundRecords({ from: day, to: day, excludeOpening: true }),
+      DB.fetchOutboundRecords({ from: day, to: day, excludeOpening: true })
     ]);
+
+    setDatabaseStatus(true);
 
     // 统计数据
     document.getElementById('statProductCount').textContent = products.length;
@@ -243,7 +256,7 @@ async function renderDashboard() {
     document.getElementById('statTodayOut').textContent = outToday.filter(r => !isOpeningRecord(r)).reduce((s, r) => s + parseFloat(r.quantity), 0) + '件';
 
     // 低库存预警
-    const lowStock = stockData.filter(s => parseFloat(s.stock_qty) <= 5 && parseFloat(s.stock_qty) >= 0);
+    const lowStock = stockData.filter(s => parseFloat(s.stock_qty) <= 5);
     const lowDiv = document.getElementById('dashboardLowStock');
     if (lowStock.length === 0) {
       lowDiv.innerHTML = '<div style="color:var(--color-text-muted);font-size:0.85rem;padding:8px 0;">✅ 库存充足，无需补货</div>';
@@ -258,8 +271,8 @@ async function renderDashboard() {
 
     // 最近操作
     const [recentIn, recentOut] = await Promise.all([
-      DB.fetchInboundRecords({ excludeOpening: true }).catch(() => []),
-      DB.fetchOutboundRecords({ excludeOpening: true }).catch(() => [])
+      DB.fetchInboundRecords({ excludeOpening: true, limit: 10 }),
+      DB.fetchOutboundRecords({ excludeOpening: true, limit: 10 })
     ]);
     const recent = [...recentIn.map(r => ({ ...r, _type: 'in' })), ...recentOut.map(r => ({ ...r, _type: 'out' }))]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -293,7 +306,9 @@ async function renderDashboard() {
       }).join('');
     }
   } catch (err) {
+    setDatabaseStatus(false);
     console.error('仪表盘加载失败:', err);
+    showToast('账本加载失败，请检查网络；页面原有数字可能不是最新库存。','error');
   }
 }
 
@@ -304,6 +319,7 @@ async function renderStock() {
   const container = document.getElementById('stockList');
   try {
     const stockData = await DB.fetchCurrentStock(search);
+    setDatabaseStatus(true);
     setState('stockCache', stockData);
     if (stockData.length === 0) {
       container.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${search ? '没有找到匹配的商品' : '还没有商品，点右上角＋添加'}</p></div>`;
@@ -367,6 +383,7 @@ async function renderStock() {
         if (!confirm(`确定删除「${btn.dataset.name}」？\n（有入库/出库记录的商品无法删除）`)) return;
         try {
           await DB.deleteProduct(btn.dataset.id);
+          setState('products', []);
           showToast('已删除「' + btn.dataset.name + '」', 'success');
           await renderStock();
           await renderDashboard();
@@ -377,6 +394,7 @@ async function renderStock() {
     });
 
   } catch (err) {
+    setDatabaseStatus(false);
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>加载失败，检查网络</p></div>`;
   }
 }
@@ -394,16 +412,16 @@ async function openQuickInModal(productId, productName, unit) {
   document.getElementById('quickInQty').focus();
 }
 
-async function handleQuickIn() {
+async function handleQuickInCore() {
   const productId = document.getElementById('quickInModalOverlay').dataset.productId;
   const qty = parseFloat(document.getElementById('quickInQty').value);
-  if (!qty || qty <= 0) { showToast('请输入数量', 'warning'); return; }
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
   const customerId = document.getElementById('quickInCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
 
   try {
-    await DB.createInbound({ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
+    await saveDailyRecord('quickInModalOverlay','createInbound',{ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
     showToast('入库成功 ✅', 'success');
     document.getElementById('quickInModalOverlay').style.display = 'none';
     await renderStock();
@@ -424,16 +442,16 @@ async function openQuickOutModal(productId, productName, unit) {
   document.getElementById('quickOutQty').focus();
 }
 
-async function handleQuickOut() {
+async function handleQuickOutCore() {
   const productId = document.getElementById('quickOutModalOverlay').dataset.productId;
   const qty = parseFloat(document.getElementById('quickOutQty').value);
-  if (!qty || qty <= 0) { showToast('请输入数量', 'warning'); return; }
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
   const customerId = document.getElementById('quickOutCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customerId ? customers.find(c => c.id === customerId) : null;
 
   try {
-    await DB.createOutbound({ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
+    await saveDailyRecord('quickOutModalOverlay','createOutbound',{ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
     showToast('出库成功 ✅', 'success');
     document.getElementById('quickOutModalOverlay').style.display = 'none';
     await renderStock();
@@ -444,6 +462,8 @@ async function handleQuickOut() {
 // ==================== 📥 入库 ====================
 
 async function renderInboundForm() {
+  const previousProduct = document.getElementById('inboundProduct').value;
+  const previousCustomer = document.getElementById('inboundCustomer').value;
   const [products, customers] = await Promise.all([loadProducts(), loadCustomers()]);
   const pSel = document.getElementById('inboundProduct');
   pSel.innerHTML = '<option value="">请选择商品</option>' +
@@ -451,21 +471,23 @@ async function renderInboundForm() {
   const cSel = document.getElementById('inboundCustomer');
   cSel.innerHTML = '<option value="">请选择客户（可选）</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} ${c.phone ? '📱' + escapeHtml(c.phone) : ''}</option>`).join('');
-  document.getElementById('inboundDate').value = today();
+  document.getElementById('inboundProduct').value = previousProduct;
+  document.getElementById('inboundCustomer').value = previousCustomer;
+  if (!document.getElementById('inboundDate').value) document.getElementById('inboundDate').value = today();
 }
 
-async function handleInboundSubmit(e) {
+async function handleInboundSubmitCore(e) {
   e.preventDefault();
   const product_id = document.getElementById('inboundProduct').value;
   if (!product_id) { showToast('请选择商品', 'warning'); return; }
   const qty = parseFloat(document.getElementById('inboundQty').value);
-  if (!qty || qty <= 0) { showToast('请输入有效数量', 'warning'); return; }
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
   const customer_id = document.getElementById('inboundCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
 
   try {
-    await DB.createInbound({
+    await saveDailyRecord('inboundForm','createInbound',{
       product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
       unit_price: null,
       note: document.getElementById('inboundNote').value.trim(),
@@ -482,12 +504,15 @@ async function handleInboundSubmit(e) {
 async function handleInboundQuickParse() {
   const text = document.getElementById('inboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
-  const customers = await loadCustomers();
-  const products = await loadProducts();
+  try {
+  const customers = await loadCustomers(true);
+  const products = await loadProducts(true);
   const parsed = parseQuickEntry(text, customers, products);
+  if (document.getElementById('inboundQuickText').value !== text) return;
   const resolved = resolveProducts(parsed, products);
   document.getElementById('inboundQuickText').dataset.resolved = JSON.stringify(resolved);
   renderParsePreview('inboundParsePreview', resolved);
+  } catch(error) { showToast('解析未完成，原文已保留：'+error.message,'error'); }
 }
 
 async function handleInboundQuickSubmit() {
@@ -505,20 +530,24 @@ async function handleInboundExcelSubmit() {
 // ==================== 📤 出库 ====================
 
 async function renderOutboundForm() {
+  const previousProduct = document.getElementById('outboundProduct').value;
+  const previousCustomer = document.getElementById('outboundCustomer').value;
   const [products, customers] = await Promise.all([loadProducts(), loadCustomers()]);
   document.getElementById('outboundProduct').innerHTML = '<option value="">请选择商品</option>' +
     products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} ${p.spec ? '(' + escapeHtml(p.spec) + ')' : ''}</option>`).join('');
   document.getElementById('outboundCustomer').innerHTML = '<option value="">请选择客户（可选）</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} ${c.phone ? '📱' + escapeHtml(c.phone) : ''}</option>`).join('');
-  document.getElementById('outboundDate').value = today();
+  document.getElementById('outboundProduct').value = previousProduct;
+  document.getElementById('outboundCustomer').value = previousCustomer;
+  if (!document.getElementById('outboundDate').value) document.getElementById('outboundDate').value = today();
 }
 
-async function handleOutboundSubmit(e) {
+async function handleOutboundSubmitCore(e) {
   e.preventDefault();
   const product_id = document.getElementById('outboundProduct').value;
   if (!product_id) { showToast('请选择商品', 'warning'); return; }
   const qty = parseFloat(document.getElementById('outboundQty').value);
-  if (!qty || qty <= 0) { showToast('请输入有效数量', 'warning'); return; }
+  if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的数量，最多两位小数', 'warning'); return; }
   const customer_id = document.getElementById('outboundCustomer').value || null;
   const customers = await loadCustomers();
   const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
@@ -531,7 +560,7 @@ async function handleOutboundSubmit(e) {
   } catch (err) {}
 
   try {
-    await DB.createOutbound({
+    await saveDailyRecord('outboundForm','createOutbound',{
       product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
       unit_price: null,
       note: document.getElementById('outboundNote').value.trim(),
@@ -548,12 +577,15 @@ async function handleOutboundSubmit(e) {
 async function handleOutboundQuickParse() {
   const text = document.getElementById('outboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
-  const customers = await loadCustomers();
-  const products = await loadProducts();
+  try {
+  const customers = await loadCustomers(true);
+  const products = await loadProducts(true);
   const parsed = parseQuickEntry(text, customers, products);
+  if (document.getElementById('outboundQuickText').value !== text) return;
   const resolved = resolveProducts(parsed, products);
   document.getElementById('outboundQuickText').dataset.resolved = JSON.stringify(resolved);
   renderParsePreview('outboundParsePreview', resolved);
+  } catch(error) { showToast('解析未完成，原文已保留：'+error.message,'error'); }
 }
 
 async function handleOutboundQuickSubmit() {
@@ -579,7 +611,7 @@ function collectEditablePreview(containerId) {
     const qtyInput = row.querySelector('.ep-qty');
     const rawName = nameInput.value.trim();
     const quantity = Number(qtyInput.value);
-    if (!rawName || !Number.isFinite(quantity) || quantity <= 0) {
+    if (!rawName || !validDailyQuantity(quantity)) {
       row.classList.add('row-error');
       const invalid = !rawName ? nameInput : qtyInput;
       invalid.setAttribute('aria-invalid', 'true');
@@ -632,6 +664,8 @@ function initInstallButton() {
 // ==================== Excel 通用 ====================
 
 async function handleExcelFile(e, fileId, previewId, submitId) {
+  const input=document.getElementById(fileId);
+  const version=String((Number(input.dataset.readVersion)||0)+1);input.dataset.readVersion=version;
   document.getElementById(previewId).innerHTML = '';
   document.getElementById(submitId).style.display = 'none';
   const file = e.target.files[0];
@@ -639,11 +673,12 @@ async function handleExcelFile(e, fileId, previewId, submitId) {
   try {
     const rows = await readExcelFile(file);
     const [customers, products] = await Promise.all([loadCustomers(), loadProducts()]);
+    if(input.dataset.readVersion!==version)return;
     const { resolved } = parseExcelData(rows, customers, products);
     document.getElementById(fileId).dataset.resolved = JSON.stringify(resolved);
     renderExcelPreview(previewId, resolved);
     showToast(`已解析 ${resolved.length} 条记录`, 'info');
-  } catch (err) { showToast('Excel 解析失败: ' + err.message, 'error'); }
+  } catch (err) { if(input.dataset.readVersion===version)showToast('Excel 解析失败: ' + err.message, 'error'); }
 }
 
 async function readExcelFile(file) {
@@ -675,9 +710,8 @@ async function submitQuickData(textId, opType) {
   return submitBatchPreview(`${direction}ParsePreview`, textId, `${direction}QuickSubmit`, opType);
 }
 
-async function submitBatchPreview(previewId, inputId, buttonId, opType) {
+async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
   const button = document.getElementById(buttonId);
-  if (button.disabled) return false;
   const editedItems = collectEditablePreview(previewId);
   if (!editedItems) return false;
   if (!editedItems.length) { showToast('请先解析预览，检查商品和数量', 'warning'); return false; }
@@ -688,6 +722,7 @@ async function submitBatchPreview(previewId, inputId, buttonId, opType) {
     const [products, customers] = await Promise.all([loadProducts(true), loadCustomers(true)]);
     const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
     for (const item of editedItems) {
+      if (matchingProducts(item.rawName,products).length > 1) throw new Error(`「${item.rawName}」有多个规格，请使用表单选择具体商品`);
       const product = findProduct(item.rawName, products);
       if (product && item.unit && unitKey(item.unit) !== unitKey(product.unit)) {
         throw new Error(`「${product.name}」的单位是「${product.unit}」，请核对数量并将单位改为「${product.unit}」`);
@@ -711,7 +746,8 @@ async function submitBatchPreview(previewId, inputId, buttonId, opType) {
         unit_price: null, note: '', recorded_at: today()
       });
     }
-    await DB[opType](records);
+    await DB[opType](saveIntents.records(inputId,records));
+    saveIntents.complete(inputId);
     document.getElementById(inputId).value = '';
     document.getElementById(previewId).innerHTML = '';
     button.style.display = 'none';
@@ -894,7 +930,7 @@ async function openEditModal(productId) {
 
 function closeProductModal() { document.getElementById('productModalOverlay').style.display = 'none'; }
 
-async function handleProductSave() {
+async function handleProductSaveCore() {
   const name = document.getElementById('productModalName').value.trim();
   if (!name) { showToast('请输入商品名称', 'warning'); return; }
   const editId = document.getElementById('productModalOverlay').dataset.editId;
@@ -906,6 +942,8 @@ async function handleProductSave() {
     editId
       ? await DB.updateProduct(editId, { name, spec, unit })
       : await DB.createProduct({ name, spec, unit });
+
+    setState('products', []);
 
     // 库存修正（仅编辑时可用）
     const adjustInput = document.getElementById('productModalAdjustQty');
@@ -959,107 +997,53 @@ function parseCustomerLines(text) {
   });
 }
 
+function renderCustomerImport(inputId, previewId, buttonId, parsed, existing) {
+  const resolved = planCustomerImport(parsed, existing);
+  const input = document.getElementById(inputId);
+  input.dataset.resolved = JSON.stringify(parsed);
+  document.getElementById(previewId).innerHTML = `<div class="parse-preview"><table><thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead><tbody>${resolved.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.phone)}</td><td>${escapeHtml(row.note)}</td><td>${row.exists ? '已存在或本批重复，跳过' : '待新增'}</td></tr>`).join('')}</tbody></table></div>`;
+  document.getElementById(buttonId).style.display = resolved.some(row=>!row.exists) ? 'block' : 'none';
+}
 async function handleCustomerQuickParse() {
   const text = document.getElementById('customerQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
-  const parsed = parseCustomerLines(text);
-  const existing = await loadCustomers();
-  const existingNames = new Set(existing.map(c => c.name));
-  const resolved = parsed.map(p => ({
-    ...p,
-    exists: existingNames.has(p.name),
-    _dup: existingNames.has(p.name) ? existing.find(c => c.name === p.name) : null
-  }));
-  document.getElementById('customerQuickText').dataset.resolved = JSON.stringify(resolved);
-  document.getElementById('customerParsePreview').innerHTML = `
-    <div class="parse-preview"><table>
-      <thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead>
-      <tbody>${resolved.map(r => r.exists
-        ? `<tr class="row-matched"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-warning">已存在(跳过)</span></td></tr>`
-        : `<tr class="row-new"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-success">新增</span></td></tr>`
-      ).join('')}</tbody>
-    </table></div>`;
-  const newCount = resolved.filter(r => !r.exists).length;
-  document.getElementById('customerQuickSubmit').style.display = newCount > 0 ? 'block' : 'none';
-  showToast(newCount > 0 ? `将新增 ${newCount} 个客户（${resolved.length - newCount} 个已存在跳过）` : '所有客户已存在，无需添加', 'info');
+  try { const existing=await loadCustomers(true);if(document.getElementById('customerQuickText').value!==text)return;renderCustomerImport('customerQuickText','customerParsePreview','customerQuickSubmit',parseCustomerLines(text),existing); }
+  catch (error) { showToast('解析失败：' + error.message, 'error'); }
 }
-
-async function handleCustomerQuickSubmit() {
-  const json = document.getElementById('customerQuickText').dataset.resolved;
-  if (!json) return;
-  const resolved = JSON.parse(json);
-  const newCustomers = resolved.filter(r => !r.exists);
-  if (newCustomers.length === 0) { showToast('没有需要添加的客户', 'info'); return; }
-
-  let success = 0;
-  for (const c of newCustomers) {
+async function submitCustomers(inputId,previewId,buttonId,scopeId) {
+  return withSaveLock(scopeId, async()=>{
+    const input = document.getElementById(inputId);
+    if (!input.dataset.resolved) return;
+    const rows = JSON.parse(input.dataset.resolved);
     try {
-      await DB.createCustomer({ name: c.name, phone: c.phone, note: c.note });
-      success++;
-    } catch (err) {
-      showToast(`添加「${c.name}」失败: ${err.message}`, 'error');
-    }
-  }
-  showToast(`成功添加 ${success} 个客户 ✅`, 'success');
-  document.getElementById('customerQuickText').value = '';
-  document.getElementById('customerParsePreview').innerHTML = '';
-  document.getElementById('customerQuickSubmit').style.display = 'none';
-  await loadCustomers(true);
-  await renderCustomers();
-  await renderDashboard();
+      const result = await saveCustomerImport(rows,DB);
+      setState('customers',null);
+      if (result.failed.length) {
+        // Retain the complete source; fresh rechecking skips successful rows on retry.
+        showToast(`已添加 ${result.saved} 个，${result.failed.length} 个未完成，内容已保留：${result.failed[0].error}`, 'error');
+      } else {
+        showToast(`已添加 ${result.saved} 个，跳过 ${result.skipped} 个已有或重复客户`, 'success');
+        input.value='';delete input.dataset.resolved;
+        document.getElementById(previewId).innerHTML='';document.getElementById(buttonId).style.display='none';
+      }
+      await renderCustomers();await renderDashboard();
+    } catch (error) { showToast('导入未完成，内容已保留：'+error.message,'error'); }
+  });
 }
-
-async function handleCustomerExcelImport(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+async function handleCustomerQuickSubmit() { return submitCustomers('customerQuickText','customerParsePreview','customerQuickSubmit','customerQuickMode'); }
+async function handleCustomerExcelImport(event) {
+  const input=document.getElementById('customerExcelFile');
+  const version=String((Number(input.dataset.readVersion)||0)+1);input.dataset.readVersion=version;
+  delete input.dataset.resolved;document.getElementById('customerExcelPreview').innerHTML='';document.getElementById('customerExcelSubmit').style.display='none';
+  const file=event.target.files[0];if(!file)return;
   try {
-    const rows = await readExcelFile(file);
-    // 自动跳过标题行
-    const parsed = rows.filter(row => row.some(c => String(c).trim())).map(row => ({
-      name: String(row[0] || '').trim(),
-      phone: String(row[1] || '').trim(),
-      note: String(row[2] || '').trim()
-    })).filter(r => r.name);
-    const existing = await loadCustomers();
-    const existingNames = new Set(existing.map(c => c.name));
-    const resolved = parsed.map(p => ({ ...p, exists: existingNames.has(p.name) }));
-    document.getElementById('customerExcelFile').dataset.resolved = JSON.stringify(resolved);
-    document.getElementById('customerExcelPreview').innerHTML = `
-      <div class="parse-preview"><table>
-        <thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead>
-        <tbody>${resolved.map(r => r.exists
-          ? `<tr class="row-matched"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-warning">已存在(跳过)</span></td></tr>`
-          : `<tr class="row-new"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.phone)}</td><td>${escapeHtml(r.note)}</td><td><span class="badge badge-success">新增</span></td></tr>`
-        ).join('')}</tbody>
-      </table></div>`;
-    const newCount = resolved.filter(r => !r.exists).length;
-    document.getElementById('customerExcelSubmit').style.display = newCount > 0 ? 'block' : 'none';
-    showToast(`已解析 ${resolved.length} 个客户，${newCount} 个待新增`, 'info');
-  } catch (err) { showToast('Excel 解析失败: ' + err.message, 'error'); }
-}
-
-async function handleCustomerExcelSubmit() {
-  const json = document.getElementById('customerExcelFile').dataset.resolved;
-  if (!json) return;
-  const resolved = JSON.parse(json);
-  const newCustomers = resolved.filter(r => !r.exists);
-  let success = 0;
-  for (const c of newCustomers) {
-    try {
-      await DB.createCustomer({ name: c.name, phone: c.phone, note: c.note });
-      success++;
-    } catch (err) {
-      showToast(`添加「${c.name}」失败: ${err.message}`, 'error');
-    }
+    const rows=await readExcelFile(file);const existing=await loadCustomers(true);
+    if(input.dataset.readVersion!==version)return;
+    renderCustomerImport('customerExcelFile','customerExcelPreview','customerExcelSubmit',parseCustomerExcel(rows),existing);
   }
-  showToast(`成功导入 ${success} 个客户 ✅`, 'success');
-  document.getElementById('customerExcelPreview').innerHTML = '';
-  document.getElementById('customerExcelSubmit').style.display = 'none';
-  document.getElementById('customerExcelFile').value = '';
-  await loadCustomers(true);
-  await renderCustomers();
-  await renderDashboard();
+  catch(error) { if(input.dataset.readVersion===version)showToast('Excel 解析失败：'+error.message,'error'); }
 }
+async function handleCustomerExcelSubmit() { return submitCustomers('customerExcelFile','customerExcelPreview','customerExcelSubmit','customerExcelMode'); }
 
 // ==================== 客户弹窗 ====================
 
@@ -1075,13 +1059,14 @@ function showCustomerModal(customer = null) {
 
 function closeCustomerModal() { document.getElementById('customerModalOverlay').style.display = 'none'; }
 
-async function handleCustomerSave() {
+async function handleCustomerSaveCore() {
   const name = document.getElementById('customerModalName').value.trim();
   if (!name) { showToast('请输入客户名称', 'warning'); return; }
   const editId = document.getElementById('customerModalOverlay').dataset.editId;
   const data = { name, phone: document.getElementById('customerModalPhone').value.trim(), note: document.getElementById('customerModalNote').value.trim() };
   try {
     editId ? await DB.updateCustomer(editId, data) : await DB.createCustomer(data);
+    setState('customers',null);
     showToast(editId ? '已更新' : '已添加', 'success');
     closeCustomerModal();
     await renderCustomers();
@@ -1126,7 +1111,7 @@ function renderParsePreview(containerId, resolved) {
 async function loadProducts(force = false) {
   let p = getState('products');
   if (force || p.length === 0) {
-    try { p = await DB.fetchProducts(); setState('products', p); } catch (err) {}
+    p = await DB.fetchProducts(); setState('products', p);
   }
   return getState('products');
 }
@@ -1134,7 +1119,7 @@ async function loadProducts(force = false) {
 async function loadCustomers(force = false) {
   let c = getState('customers');
   if (force || !c) {
-    try { c = await DB.fetchCustomers(); setState('customers', c); } catch (err) { c = []; }
+    c = await DB.fetchCustomers(); setState('customers', c);
   }
   return getState('customers') || [];
 }
@@ -1178,4 +1163,47 @@ function getEmoji(name) {
   const map = { '肉':'🥩','鸡':'🐔','鸭':'🦆','鱼':'🐟','虾':'🦐','猪':'🐷','牛':'🐮','羊':'🐑','蛋':'🥚','菜':'🥬','米':'🍚','面':'🍜','油':'🫗','酒':'🍺','水':'💧','卷':'🌀','号':'🔢','奶':'🥛','茶':'🍵','腿':'🍗','爪':'🐾' };
   for (const [k, e] of Object.entries(map)) { if (name.includes(k)) return e; }
   return '📦';
+}
+
+// Lock a save action before any asynchronous lookup starts.
+const savingScopes = new Set();
+async function withSaveLock(scopeId, action) {
+  if (savingScopes.has(scopeId)) return;
+  const scope = document.getElementById(scopeId);
+  const controls = [...scope.querySelectorAll('input,select,textarea,button')].map(element=>[element,element.disabled]);
+  savingScopes.add(scopeId);
+  controls.forEach(([element])=>{element.disabled=true;});
+  try { return await action(); }
+  catch (error) { showToast('操作未完成，输入已保留：' + error.message, 'error'); }
+  finally { controls.forEach(([element,disabled])=>{element.disabled=disabled;});savingScopes.delete(scopeId); }
+}
+async function handleQuickIn(event) { event?.preventDefault?.(); return withSaveLock('quickInModalOverlay',()=>handleQuickInCore(event)); }
+async function handleQuickOut(event) { event?.preventDefault?.(); return withSaveLock('quickOutModalOverlay',()=>handleQuickOutCore(event)); }
+async function handleInboundSubmit(event) { event?.preventDefault?.(); return withSaveLock('inboundForm',()=>handleInboundSubmitCore(event)); }
+async function handleOutboundSubmit(event) { event?.preventDefault?.(); return withSaveLock('outboundForm',()=>handleOutboundSubmitCore(event)); }
+async function handleProductSave(event) { event?.preventDefault?.(); return withSaveLock('productModalOverlay',()=>handleProductSaveCore(event)); }
+async function handleCustomerSave(event) { event?.preventDefault?.(); return withSaveLock('customerModalOverlay',()=>handleCustomerSaveCore(event)); }
+
+function validDailyQuantity(value) { return Number.isFinite(value) && value > 0 && value <= 9999999999.99 && Math.abs(value*100-Math.round(value*100)) < 0.0001; }
+
+async function saveDailyRecord(scope,method,record) {
+  const [payload]=saveIntents.records(scope,[record]);
+  const saved=await DB[method](payload);
+  saveIntents.complete(scope);
+  return saved;
+}
+
+async function submitBatchPreview(previewId,inputId,buttonId,opType) {
+  const direction=inputId.startsWith('inbound') ? 'inbound' : 'outbound';
+  const mode=inputId.includes('Excel') ? 'Excel' : 'Quick';
+  return withSaveLock(`${direction}${mode}Mode`,()=>submitBatchPreviewCore(previewId,inputId,buttonId,opType));
+}
+
+function setDatabaseStatus(connected) {
+  const element=document.getElementById('syncStatus');
+  if(!element)return;
+  const online=navigator.onLine;
+  element.textContent=online ? (connected ? '🟢 已连接' : '🟠 账本未连接') : '🔴 离线';
+  element.classList.toggle('online',online&&connected);
+  element.classList.toggle('offline',!online||!connected);
 }
