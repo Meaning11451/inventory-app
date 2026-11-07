@@ -356,6 +356,19 @@
         "value": "1024px"
       }
     ],
+    "layout": {
+      "mobileStockList": {
+        "maxWidth": "767px",
+        "summaryMinHeight": "44px",
+        "summaryPadding": "6px 12px",
+        "nameFontSize": "0.95rem / 15.2px",
+        "quantityFontSize": "1.2rem / 19.2px",
+        "unitFontSize": "0.8rem / 12.8px",
+        "toggleMinHeight": "44px",
+        "actionMinHeight": "44px",
+        "behavior": "商品全名允许折行，数量与单位同行；点整行展开，最多一组操作展开，再点收起。搜索、商品顺序、总库存与桌面布局保持既有规则。"
+      }
+    },
     "reviewEvidence": {
       "status": "captured",
       "directory": ".impeccable/review",
@@ -395,9 +408,27 @@
         {
           "file": "compact-stock-desktop.jpg",
           "viewport": "1280x899"
+        },
+        {
+          "file": "density-stock-390.jpg",
+          "viewport": "390x1000",
+          "completeRows": 14
+        },
+        {
+          "file": "density-stock-320.jpg",
+          "viewport": "320x740"
+        },
+        {
+          "file": "density-stock-expanded-320.jpg",
+          "viewport": "320x740"
+        },
+        {
+          "file": "density-stock-desktop.jpg",
+          "viewport": "1280x900"
         }
       ],
-      "compactStockConditions": "Edge 模拟视口与模拟账本检查：320px 和 390px 视口中分别完整显示 6 行、8 行商品，页面含 35px 模拟提示条；实际可见行数随屏幕、名称折行和操作展开状态变化。未在实体手机验证，进出库流程仅使用模拟数据。"
+      "compactStockConditions": "历史 compact-stock 截图：Edge 模拟视口与模拟账本检查，320px 和 390px 视口中分别完整显示 6 行、8 行商品，页面含 35px 模拟提示条；这些截图保留前一轮布局证据，不代表当前密度。未在实体手机验证，进出库流程仅使用模拟数据。",
+      "densityStockConditions": "最终 density-stock 截图使用 Edge 模拟视口与标明为模拟数据的 1073 件合计账本。用户当前手机约显示 11 行，目标约 13–14 行；390×1000 截图在含模拟提示条时完整显示 14 行。320×740 同时检查收起和展开操作，1280×900 检查桌面。实际可见行数随屏幕高度、名称折行和操作展开状态变化，不是所有手机的固定行数；未在实体手机验证，未写入日常业务数据。"
     }
   },
   "components": [
@@ -497,7 +528,7 @@
     "dos": [
       "**Do** 以宋体“三胜达”、事实描述“火锅牛羊肉”和统一线性 SVG 图标建立识别，徽记保持辅助尺寸。",
       "**Do** 保留白色卡片、业务信息层级、语义状态色和现有操作文案。",
-      "**Do** 在手机库存列表中优先显示完整商品名和右侧数量，点整行展开一组带文字标签的操作；保留至少 56px 的摘要行和 44px 的操作按钮。",
+      "**Do** 在手机库存列表中优先显示完整商品名和右侧数量，点整行展开一组带文字标签的操作；摘要行、整行展开按钮和操作按钮均保留至少 44px 的高度。",
       "**Do** 尊重安全区、可见键盘焦点和减少动态效果偏好。"
     ],
     "donts": [
