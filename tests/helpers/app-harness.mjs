@@ -4,16 +4,18 @@ import vm from 'node:vm';
 import * as parser from '../../js/parser.js';
 import * as customerImport from '../../js/customer-import.js';
 import { createSaveIntents } from '../../js/save-intent.js';
+import { createWorkspaceStore } from '../../js/workspace.js';
 import { isOpeningRecord } from '../../js/opening-stock.js';
-export async function harness(overrides = {}) {
+export async function harness(overrides = {}, { savedStorage = {}, ledger } = {}) {
   const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
   const dom = new JSDOM(html, { url: 'https://inventory.test/', runScripts: 'outside-only' });
   const win = dom.window;
+  for (const [key,value] of Object.entries(savedStorage)) win.localStorage.setItem(key,value);
   const state = { products: [], customers: null, currentTab: 'dashboard' };
   let counter = 0;
-  const products = [{id:'p1',name:'后腿卷',unit:'件',spec:''}];
-  const customers = [];
-  const inbound = [], outbound = [];
+  const products = ledger?.products || [{id:'p1',name:'后腿卷',unit:'件',spec:''}];
+  const customers = ledger?.customers || [];
+  const inbound = ledger?.inbound || [], outbound = ledger?.outbound || [];
   const recordRows = (rows, options = {}) => rows.filter(r => (!options.from || r.recorded_at >= options.from) && (!options.to || r.recorded_at <= options.to) && (!options.customerId || r.customer_id === options.customerId)).map(r=>({...r, products:products.find(p=>p.id===r.product_id)}));
   const api = {
     fetchProducts:async()=>structuredClone(products), fetchCustomers:async()=>structuredClone(customers),
@@ -34,7 +36,7 @@ export async function harness(overrides = {}) {
     deleteOutboundRecord:async id=>outbound.splice(outbound.findIndex(r=>r.id===id),1),
     subscribeStockChanges:()=>({unsubscribe(){}}), ...overrides
   };
-  Object.assign(win,{ DB:api,getState:key=>key?state[key]:state,setState:(k,v)=>state[k]=v,...parser,...customerImport,createSaveIntents,isOpeningRecord,initSync(){},getPendingCount:async()=>0,initOpeningImport(){},confirm:()=>true });
+  Object.assign(win,{ DB:api,getState:key=>key?state[key]:state,setState:(k,v)=>state[k]=v,...parser,...customerImport,createSaveIntents,createWorkspaceStore,isOpeningRecord,initSync(){},getPendingCount:async()=>0,initOpeningImport(){},initBackup(){},confirm:()=>true });
   let source = await readFile(new URL('../../js/app.js',import.meta.url),'utf8');
   source = source.replace(/^import .*;\r?$/gm,'').replace("document.addEventListener('DOMContentLoaded', () => { initApp(); });",'');
   vm.runInContext(source,dom.getInternalVMContext());

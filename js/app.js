@@ -9,9 +9,21 @@ import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
 import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js';
-import { createSaveIntents } from './save-intent.js';
+import { createSaveIntents } from './save-intent.js?v=23';
 import { initBackup } from './backup.js';
-const saveIntents = createSaveIntents();
+import { createWorkspaceStore } from './workspace.js?v=23';
+const workspaceStore = createWorkspaceStore(() => window.localStorage);
+const recoveredWorkspace = workspaceStore.read();
+const batchDrafts = [
+  ['inboundQuickText','inboundParsePreview'], ['outboundQuickText','outboundParsePreview'],
+  ['inboundExcelFile','inboundExcelPreview'], ['outboundExcelFile','outboundExcelPreview']
+];
+const batchScopes = batchDrafts.map(([source])=>source);
+const savedIntents = Array.isArray(recoveredWorkspace?.intents)
+  ? recoveredWorkspace.intents.filter(entry=>Array.isArray(entry) && batchScopes.includes(entry[0])) : [];
+const saveIntents = createSaveIntents(savedIntents);
+let workspaceReady = false;
+let workspaceWarningShown = false;
 
 // 全局暴露
 window._showToast = showToast;
@@ -36,6 +48,12 @@ async function initApp() {
   initInstallButton();
   initBackup({ api: DB, getPendingCount });
   initOpeningImport({ api: DB, onChanged: async () => { setState('products', []); await renderStock(); await renderDashboard(); } });
+
+  const initialTab = restoreWorkspace();
+  workspaceReady = true;
+  initWorkspacePersistence();
+  // Restore navigation before the first asynchronous lookup can finish.
+  const initialView = switchTab(initialTab);
 
   initSync({
     createInbound: (p) => DB.createInbound(p),
@@ -64,7 +82,96 @@ async function initApp() {
     }
   });
 
-  await switchTab('dashboard');
+  await initialView;
+  persistWorkspace();
+  if (recoveredWorkspace && batchDrafts.some(([source, preview])=>
+    (source.endsWith('QuickText') && document.getElementById(source).value.trim()) ||
+    document.getElementById(preview).querySelector('tbody tr'))) {
+    showToast('已恢复上次未提交的录入，请核对后保存', 'info');
+  }
+}
+
+// ==================== 本机录入草稿 ====================
+
+function captureWorkspaceDraft(sourceId, previewId) {
+  const source = document.getElementById(sourceId);
+  let resolved = [];
+  try { resolved = JSON.parse(source.dataset.resolved || '[]'); } catch {}
+  const table = document.getElementById(previewId).querySelector('tbody');
+  return {
+    text: sourceId.endsWith('QuickText') ? source.value : '',
+    rows: table ? [...table.querySelectorAll('tr')].map(row => {
+      const select = row.querySelector('.ep-product');
+      const option = select.selectedOptions[0];
+      const customer = row.querySelector('.ep-customer').value;
+      return {
+        product: select.value ? { id: select.value, name: option.dataset.name || '',
+          unit: option.dataset.unit || '件', spec: option.dataset.spec || '' } : null,
+        rawName: resolved?.[Number(row.dataset.idx)]?.parsed?.rawName || '',
+        customer, quantity: row.querySelector('.ep-qty').value,
+        unit: row.querySelector('.ep-unit').value,
+        phone: findCustomer(customer,[{name:row.dataset.customer || ''}]) ? row.dataset.phone || '' : ''
+      };
+    }) : null
+  };
+}
+
+function persistWorkspace() {
+  if (!workspaceReady) return;
+  const modes = Object.fromEntries(['inbound','outbound'].map(direction=>
+    [direction, document.querySelector(`#page-${direction} .segmented-control .active`)?.id.replace(`${direction}Mode`,'').toLowerCase() || 'form']));
+  const snapshot = {
+    tab: getState('currentTab'), modes,
+    drafts: Object.fromEntries(batchDrafts.map(([source,preview])=>[source,captureWorkspaceDraft(source,preview)])),
+    intents: saveIntents.snapshot(batchScopes)
+  };
+  if (!workspaceStore.write(snapshot) && !workspaceWarningShown) {
+    workspaceWarningShown = true;
+    showToast('本机无法保存录入草稿，切换应用前请另留一份原文', 'warning');
+  }
+}
+
+function restoreWorkspace() {
+  const saved = recoveredWorkspace;
+  if (!saved) return 'dashboard';
+  for (const [sourceId, previewId] of batchDrafts) {
+    const draft = saved.drafts?.[sourceId];
+    if (!draft || typeof draft !== 'object') continue;
+    const source = document.getElementById(sourceId);
+    if (sourceId.endsWith('QuickText') && typeof draft.text === 'string') source.value = draft.text;
+    if (!Array.isArray(draft.rows)) continue;
+    const resolved = draft.rows.filter(row=>row && typeof row === 'object').map(row=>({
+      parsed: { rawCustomer: String(row.customer || ''), rawName: String(row.rawName || ''),
+        quantity: String(row.quantity ?? ''), unit: String(row.unit || ''),
+        customer: {_phone:String(row.phone || '')},
+        error: validDailyQuantity(Number(row.quantity)) ? null : '数量需更正' },
+      product: typeof row.product?.id === 'string' ? { id: row.product.id,
+        name: String(row.product.name || ''), spec: String(row.product.spec || ''), unit: String(row.product.unit || '件') } : null,
+      needCreate: false
+    }));
+    source.dataset.resolved = JSON.stringify(resolved);
+    const cachedProducts = [...new Map(resolved.filter(row=>row.product).map(row=>[row.product.id,row.product])).values()];
+    renderParsePreview(previewId, resolved, cachedProducts);
+    document.getElementById(previewId).querySelectorAll('tbody tr').forEach((row,index)=>{
+      row.querySelector('.ep-unit').value = resolved[index].parsed.unit;
+    });
+  }
+  const mode = direction => ['form','quick','excel'].includes(saved.modes?.[direction]) ? saved.modes[direction] : 'form';
+  switchInboundMode(mode('inbound'));
+  switchOutboundMode(mode('outbound'));
+  return ['dashboard','stock','inbound','outbound','customers','records'].includes(saved.tab) ? saved.tab : 'dashboard';
+}
+
+function initWorkspacePersistence() {
+  const belongsToDraft = element => batchDrafts.some(([source,preview])=>
+    element.id === source || document.getElementById(preview).contains(element));
+  for (const type of ['input','change']) {
+    document.addEventListener(type, event => { if (belongsToDraft(event.target)) persistWorkspace(); });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') persistWorkspace();
+  });
+  window.addEventListener('pagehide', persistWorkspace);
 }
 
 // ==================== 标签切换 ====================
@@ -84,6 +191,7 @@ async function switchTab(tabName) {
   document.getElementById('headerTitle').textContent = titles[tabName] || '进销存';
   document.title = tabName === 'dashboard' ? '三胜达进销存' : `${titles[tabName] || '进销存'} · 三胜达进销存`;
 
+  persistWorkspace();
   await refreshCurrentTab();
 }
 
@@ -162,6 +270,7 @@ function bindEvents() {
     document.getElementById(id).addEventListener('click', (e) => {
       if (e.target.classList.contains('ep-remove')) {
         e.target.closest('tr').remove();
+        persistWorkspace();
       }
     });
   });
@@ -216,6 +325,7 @@ function switchInboundMode(mode) {
   // 修正 ID 映射
   const ids = { form: 'inboundModeForm', quick: 'inboundModeQuick', excel: 'inboundModeExcel' };
   Object.entries(ids).forEach(([k, id]) => document.getElementById(id).classList.toggle('active', k === mode));
+  persistWorkspace();
 }
 
 function switchOutboundMode(mode) {
@@ -224,6 +334,7 @@ function switchOutboundMode(mode) {
   document.getElementById('outboundExcelMode').style.display = mode === 'excel' ? 'block' : 'none';
   const ids = { form: 'outboundModeForm', quick: 'outboundModeQuick', excel: 'outboundModeExcel' };
   Object.entries(ids).forEach(([k, id]) => document.getElementById(id).classList.toggle('active', k === mode));
+  persistWorkspace();
 }
 
 function switchCustomerMode(mode) {
@@ -669,6 +780,7 @@ function collectEditablePreview(containerId) {
 function initEntryPreviewGuards() {
   for (const direction of ['inbound', 'outbound']) {
     document.getElementById(`${direction}QuickText`).addEventListener('input', () => {
+      delete document.getElementById(`${direction}QuickText`).dataset.resolved;
       document.getElementById(`${direction}ParsePreview`).innerHTML = '';
       document.getElementById(`${direction}QuickSubmit`).style.display = 'none';
     });
@@ -711,6 +823,7 @@ async function handleExcelFile(e, fileId, previewId, submitId) {
   const version=String((Number(input.dataset.readVersion)||0)+1);input.dataset.readVersion=version;
   document.getElementById(previewId).innerHTML = '';
   document.getElementById(submitId).style.display = 'none';
+  persistWorkspace();
   const file = e.target.files[0];
   if (!file) return;
   try {
@@ -786,11 +899,15 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
         unit_price: null, note: '', recorded_at: today()
       });
     }
-    await DB[opType](saveIntents.records(inputId,records));
-    saveIntents.complete(inputId);
+    const payloads = saveIntents.records(inputId,records,{preserveDate:true});
+    persistWorkspace();
+    await DB[opType](payloads);
     document.getElementById(inputId).value = '';
+    delete document.getElementById(inputId).dataset.resolved;
     document.getElementById(previewId).innerHTML = '';
     button.style.display = 'none';
+    saveIntents.complete(inputId);
+    persistWorkspace();
     showToast(`保存成功，共 ${records.length} 条`, 'success');
     await renderDashboard();
     return true;
@@ -1144,8 +1261,24 @@ function updateEntryPreviewRow(row, productChanged = false) {
   badge.title = '';
 }
 
-function renderParsePreview(containerId, resolved) {
-  const products = [...(getState('products') || [])].sort((a,b) =>
+function previewProductOptions(products, selectedId) {
+  return '<option value="">请选择已有商品</option>' + products.map(product =>
+    `<option value="${escapeHtml(product.id)}" data-name="${escapeHtml(product.name)}" data-spec="${escapeHtml(product.spec || '')}" data-unit="${escapeHtml(product.unit || '件')}" ${product.id === selectedId ? 'selected' : ''}>${escapeHtml(product.name)}${product.spec ? ' · ' + escapeHtml(product.spec) : ''} · ${escapeHtml(product.unit || '件')}</option>`).join('');
+}
+
+function refreshPreviewProducts(products) {
+  for (const [, previewId] of batchDrafts) {
+    for (const select of document.getElementById(previewId).querySelectorAll('.ep-product')) {
+      const selectedId = select.value;
+      select.innerHTML = previewProductOptions(products,selectedId);
+      updateEntryPreviewRow(select.closest('tr'));
+    }
+  }
+  persistWorkspace();
+}
+
+function renderParsePreview(containerId, resolved, catalog = getState('products') || []) {
+  const products = [...catalog].sort((a,b) =>
     (a.display_order == null ? Infinity : Number(a.display_order)) - (b.display_order == null ? Infinity : Number(b.display_order)) ||
     a.name.localeCompare(b.name,'zh-CN'));
   const direction = containerId.startsWith('inbound') ? 'inbound' : 'outbound';
@@ -1154,6 +1287,7 @@ function renderParsePreview(containerId, resolved) {
   button.style.display = resolved.length ? 'block' : 'none';
   if (!resolved.length) {
     document.getElementById(containerId).innerHTML = '<p class="form-hint">没有识别到商品，请在客户名下面填写“商品名 数量 单位”。</p>';
+    persistWorkspace();
     return;
   }
   document.getElementById(containerId).innerHTML = `
@@ -1163,11 +1297,11 @@ function renderParsePreview(containerId, resolved) {
       <tbody>${resolved.map((item, index) => {
         const parsed = item.parsed;
         const status = parsed.error ? ['需更正', 'danger', 'row-error'] : !item.product ? ['请选择商品', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
-        const options = products.map(product => `<option value="${escapeHtml(product.id)}" data-name="${escapeHtml(product.name)}" data-unit="${escapeHtml(product.unit || '件')}" ${product.id === item.product?.id ? 'selected' : ''}>${escapeHtml(product.name)}${product.spec ? ' · ' + escapeHtml(product.spec) : ''} · ${escapeHtml(product.unit || '件')}</option>`).join('');
+        const options = previewProductOptions(products,item.product?.id);
         const original = !item.product || item.product.name !== parsed.rawName ? `<small class="ep-source">原文：${escapeHtml(parsed.rawName)}</small>` : '';
         return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
           <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户（可选）"></td>
-          <td><select class="ep-input ep-name ep-product" aria-label="第 ${index + 1} 行商品"><option value="">请选择已有商品</option>${options}</select>${original}</td>
+          <td><select class="ep-input ep-name ep-product" aria-label="第 ${index + 1} 行商品">${options}</select>${original}</td>
           <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="1" inputmode="numeric" min="1"></td>
           <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>
           <td><span class="badge ep-status badge-${status[1]}" title="${escapeHtml(parsed.error || '')}">${status[0]}</span></td>
@@ -1175,6 +1309,7 @@ function renderParsePreview(containerId, resolved) {
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
+  persistWorkspace();
 }
 
 // ==================== 工具函数 ====================
@@ -1183,6 +1318,7 @@ async function loadProducts(force = false) {
   let p = getState('products');
   if (force || p.length === 0) {
     p = await DB.fetchProducts(); setState('products', p);
+    if (workspaceReady) refreshPreviewProducts(p);
   }
   return getState('products');
 }
