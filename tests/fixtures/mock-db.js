@@ -23,7 +23,7 @@ export async function fetchCurrentStock(search = '') {
 }
 export async function fetchProductStock(id) { return (await fetchCurrentStock()).find(product => product.id === id); }
 function readRecords(records, options = {}) {
-  return records.filter(record => (!options.excludeOpening || record.note !== OPENING_NOTE) && (!options.from || record.recorded_at >= options.from) && (!options.to || record.recorded_at <= options.to) && (!options.customerId || record.customer_id === options.customerId))
+  return records.filter(record => (!options.excludeOpening || record.note !== OPENING_NOTE) && (!options.from || record.recorded_at >= options.from) && (!options.to || record.recorded_at <= options.to) && (!options.customerId || record.customer_id === options.customerId) && (!options.productId || record.product_id === options.productId) && (!options.productIds || options.productIds.includes(record.product_id)))
     .map(record => ({ ...record, products: products.find(product => product.id === record.product_id) }));
 }
 export async function fetchInboundRecords(options) { return readRecords(inbound, options); }

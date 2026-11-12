@@ -16,7 +16,7 @@ export async function harness(overrides = {}, { savedStorage = {}, ledger } = {}
   const products = ledger?.products || [{id:'p1',name:'后腿卷',unit:'件',spec:''}];
   const customers = ledger?.customers || [];
   const inbound = ledger?.inbound || [], outbound = ledger?.outbound || [];
-  const recordRows = (rows, options = {}) => rows.filter(r => (!options.from || r.recorded_at >= options.from) && (!options.to || r.recorded_at <= options.to) && (!options.customerId || r.customer_id === options.customerId)).map(r=>({...r, products:products.find(p=>p.id===r.product_id)}));
+  const recordRows = (rows, options = {}) => rows.filter(r => (!options.excludeOpening || !isOpeningRecord(r)) && (!options.from || r.recorded_at >= options.from) && (!options.to || r.recorded_at <= options.to) && (!options.customerId || r.customer_id === options.customerId) && (!options.productId || r.product_id === options.productId) && (!options.productIds || options.productIds.includes(r.product_id))).map(r=>({...r, products:products.find(p=>p.id===r.product_id)}));
   const api = {
     fetchProducts:async()=>structuredClone(products), fetchCustomers:async()=>structuredClone(customers),
     fetchCurrentStock:async(search='')=>products.filter(p=>p.name.includes(search)).map(p=>({...p,total_inbound:inbound.filter(r=>r.product_id===p.id).reduce((s,r)=>s+r.quantity,0),total_outbound:outbound.filter(r=>r.product_id===p.id).reduce((s,r)=>s+r.quantity,0),stock_qty:inbound.filter(r=>r.product_id===p.id).reduce((s,r)=>s+r.quantity,0)-outbound.filter(r=>r.product_id===p.id).reduce((s,r)=>s+r.quantity,0)})),

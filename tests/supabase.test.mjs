@@ -66,3 +66,13 @@ test('inventory follows persisted sheet order, including numeric strings and unr
   ];
   assert.deepEqual((await api.fetchCurrentStock()).map(row=>row.id), ['z','b','a','u']);
 });
+
+test('product filters run before pagination, combine with dates/customers, and empty IDs cannot query every product',async()=>{
+ const selected=rows(1001).map(row=>({...row,product_id:'chosen',customer_id:'c'}));
+ const unrelated=rows(700).map(row=>({...row,id:'other'+row.id,product_id:'other',customer_id:'c'}));
+ tables.outbound_records=[...unrelated,...selected,{id:'old',product_id:'chosen',customer_id:'c',recorded_at:'2026-11-05'}, {id:'customer',product_id:'chosen',customer_id:'other',recorded_at:'2026-11-06'}];
+ const result=await api.fetchOutboundRecords({productIds:['chosen'],from:'2026-11-06',to:'2026-11-06',customerId:'c',excludeOpening:true});
+ assert.equal(result.length,1001);assert.ok(result.every(row=>row.product_id==='chosen'));
+ assert.equal((await api.fetchOutboundRecords({productId:'other'})).length,700);
+ calls.length=0;assert.deepEqual(await api.fetchOutboundRecords({productIds:[]}),[]);assert.equal(calls.length,0);
+});

@@ -285,7 +285,8 @@ export function subscribeStockChanges(onUpdate) {
 }
 
 // Fetch every matching business row so totals and history do not silently stop at 200.
-async function fetchLedgerRecords(direction,{from,to,customerId,productId,excludeOpening=false,limit=Infinity}={}) {
+async function fetchLedgerRecords(direction,{from,to,customerId,productId,productIds,excludeOpening=false,limit=Infinity}={}) {
+  if (Array.isArray(productIds) && productIds.length === 0) return [];
   const rows=[];
   const maxRows=Number.isFinite(limit) ? Math.max(0,Math.floor(limit)) : Infinity;
   while(rows.length < maxRows) {
@@ -297,6 +298,7 @@ async function fetchLedgerRecords(direction,{from,to,customerId,productId,exclud
     if(to)query=query.lte('recorded_at',to);
     if(customerId)query=query.eq('customer_id',customerId);
     if(productId)query=query.eq('product_id',productId);
+    if(productIds)query=query.in('product_id',productIds);
     if(excludeOpening)query=query.or(`note.is.null,note.neq.${OPENING_NOTE}`);
     const {data,error}=await query;
     if(error)throw error;

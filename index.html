@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/app-icon-180.png?v=18">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png?v=14">
   <title>三胜达进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=22">
+  <link rel="stylesheet" href="./css/style.css?v=24">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -318,21 +318,40 @@
     <!-- ==================== 📋 记录 ==================== -->
     <section id="page-records" class="tab-page">
       <div class="form-group">
+        <label class="form-label" for="recordTypeFilter">记录类型</label>
         <select id="recordTypeFilter" class="form-select">
           <option value="inbound">📥 入库记录</option>
           <option value="outbound">📤 出库记录</option>
         </select>
       </div>
-      <div class="filter-row">
-        <input type="date" id="recordFromDate" class="form-input" placeholder="开始日期">
-        <input type="date" id="recordToDate" class="form-input" placeholder="结束日期">
+      <div class="record-product-filters">
+        <div class="form-group">
+          <label class="form-label" for="recordProductSearch">查商品记录</label>
+          <input type="search" id="recordProductSearch" class="form-input" placeholder="输入商品名或简称，如：尚品后腿" autocomplete="off" aria-controls="recordProductFilter recordList">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="recordProductFilter">选择具体商品</label>
+          <select id="recordProductFilter" class="form-select"><option value="">全部商品</option></select>
+        </div>
+      </div>
+      <details class="record-extra-filters" id="recordExtraFilters">
+        <summary id="recordExtraSummary">日期 / 客户筛选</summary>
+        <div class="record-date-filters">
+        <div class="form-group"><label class="form-label" for="recordFromDate">开始日期</label><input type="date" id="recordFromDate" class="form-input"></div>
+        <div class="form-group"><label class="form-label" for="recordToDate">结束日期</label><input type="date" id="recordToDate" class="form-input"></div>
       </div>
       <div class="form-group">
+        <label class="form-label" for="recordCustomerFilter">客户</label>
         <select id="recordCustomerFilter" class="form-select">
           <option value="">全部客户</option>
         </select>
       </div>
-      <div id="recordList"></div>
+      </details>
+      <div class="record-results-bar">
+        <p id="recordSummary" role="status" aria-live="polite"></p>
+        <button id="recordClearFilters" type="button" class="btn btn-sm btn-outline">清除筛选</button>
+      </div>
+      <div id="recordList" aria-busy="false"></div>
     </section>
 
   </main>
@@ -439,6 +458,6 @@
   <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=23"></script>
+  <script type="module" src="./js/app.js?v=24"></script>
 </body>
 </html>

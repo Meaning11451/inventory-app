@@ -3,8 +3,8 @@
 // ============================================
 
 import state, { getState, setState } from './store.js';
-import * as DB from './supabase.js';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers } from './parser.js?v=20';
+import * as DB from './supabase.js?v=24';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers, searchProducts } from './parser.js?v=24';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
@@ -280,6 +280,22 @@ function bindEvents() {
   document.getElementById('recordFromDate').addEventListener('change', renderRecords);
   document.getElementById('recordToDate').addEventListener('change', renderRecords);
   document.getElementById('recordCustomerFilter').addEventListener('change', renderRecords);
+  document.getElementById('recordProductFilter').addEventListener('change', renderRecords);
+  document.getElementById('recordProductSearch').addEventListener('input', () => {
+    // Invalidate any in-flight query immediately, including during the debounce.
+    recordRenderVersion++;
+    clearTimeout(recordSearchTimer);
+    document.getElementById('recordProductFilter').value = '';
+    document.getElementById('recordSummary').textContent = '正在查找…';
+    document.getElementById('recordList').replaceChildren();
+    document.getElementById('recordList').setAttribute('aria-busy', 'true');
+    recordSearchTimer = setTimeout(renderRecords, 250);
+  });
+  document.getElementById('recordClearFilters').addEventListener('click', () => {
+    for (const id of ['recordProductSearch','recordProductFilter','recordCustomerFilter','recordFromDate','recordToDate']) document.getElementById(id).value = '';
+    document.getElementById('recordExtraFilters').open = false;
+    renderRecords();
+  });
 
   // 商品按钮
   document.getElementById('btnAddProduct').addEventListener('click', () => showProductModal());
@@ -922,27 +938,61 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
 
 // ==================== 📋 记录 ====================
 
+let recordRenderVersion = 0;
+let recordSearchTimer;
 async function renderRecords() {
+  clearTimeout(recordSearchTimer);
+  const version = ++recordRenderVersion;
   const type = document.getElementById('recordTypeFilter').value;
   const from = document.getElementById('recordFromDate').value;
   const to = document.getElementById('recordToDate').value;
   const customerId = document.getElementById('recordCustomerFilter').value;
-
-  const customers = await loadCustomers();
-  const cSel = document.getElementById('recordCustomerFilter');
-  const cur = cSel.value;
-  cSel.innerHTML = '<option value="">全部客户</option>' +
-    customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  cSel.value = cur;
-
+  const search = document.getElementById('recordProductSearch').value.trim();
+  const selectedProduct = document.getElementById('recordProductFilter').value;
+  document.getElementById('recordExtraSummary').textContent = `日期 / 客户筛选${from || to || customerId ? '（已设置）' : ''}`;
+  const container = document.getElementById('recordList');
+  const summary = document.getElementById('recordSummary');
+  container.replaceChildren();
+  container.setAttribute('aria-busy', 'true');
+  summary.textContent = '正在查找…';
   try {
+    if (from && to && from > to) {
+      summary.textContent = '开始日期不能晚于结束日期，请调整日期';
+      return;
+    }
+    const [customers, products] = await Promise.all([loadCustomers(), loadProducts()]);
+    if (version !== recordRenderVersion) return;
+    const cSel = document.getElementById('recordCustomerFilter');
+    cSel.innerHTML = '<option value="">全部客户</option>' +
+      customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    cSel.value = customerId;
+    const candidates = searchProducts(search, products);
+    const pSel = document.getElementById('recordProductFilter');
+    const matchLabel = candidates.length === 1 ? candidates[0].name : `全部匹配商品（${candidates.length}种）`;
+    pSel.innerHTML = `<option value="">${search ? escapeHtml(matchLabel) : '全部商品'}</option>` +
+      candidates.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.spec ? `（${escapeHtml(p.spec)}）` : ''}</option>`).join('');
+    pSel.value = candidates.some(p => p.id === selectedProduct) ? selectedProduct : '';
+    const productIds = pSel.value ? [pSel.value] : search ? candidates.map(p => p.id) : undefined;
+    if (productIds?.length === 0) {
+      summary.textContent = '未找到匹配商品';
+      container.innerHTML = '<div class="empty-state"><p>试试商品全名或其他简称，也可以清除筛选后选择商品。</p></div>';
+      return;
+    }
+    const options = { from, to, customerId: customerId || undefined, productIds, excludeOpening: true };
     const records = type === 'inbound'
-      ? await DB.fetchInboundRecords({ from, to, customerId: customerId || undefined, excludeOpening: true })
-      : await DB.fetchOutboundRecords({ from, to, customerId: customerId || undefined, excludeOpening: true });
+      ? await DB.fetchInboundRecords(options)
+      : await DB.fetchOutboundRecords(options);
+    if (version !== recordRenderVersion) return;
+    const totals = new Map();
+    for (const record of records) {
+      const unit = record.products?.unit || '单位未设';
+      totals.set(unit, (totals.get(unit) || 0) + Number(record.quantity));
+    }
+    const totalText = [...totals].map(([unit, quantity]) => `${formatNum(quantity)}${unit}`).join('、');
+    summary.textContent = `${type === 'inbound' ? '入库' : '出库'} ${records.length} 条${totalText ? `，共 ${totalText}` : ''}`;
 
-    const container = document.getElementById('recordList');
     if (records.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>暂无记录</p></div>';
+      container.innerHTML = '<div class="empty-state"><p>当前条件下暂无记录，可切换出入库类型或调整筛选。</p></div>';
       return;
     }
 
@@ -995,7 +1045,14 @@ async function renderRecords() {
       });
     });
 
-  } catch (err) { document.getElementById('recordList').innerHTML = '<div class="empty-state">⚠️<p>加载失败</p></div>'; }
+  } catch (err) {
+    if (version !== recordRenderVersion) return;
+    summary.textContent = '记录加载失败';
+    container.innerHTML = '<div class="empty-state"><p>请检查网络后重试。</p><button type="button" class="btn btn-outline record-retry">重新加载</button></div>';
+    container.querySelector('.record-retry').addEventListener('click', renderRecords);
+  } finally {
+    if (version === recordRenderVersion) container.setAttribute('aria-busy', 'false');
+  }
 }
 
 // ==================== 👥 客户 ====================

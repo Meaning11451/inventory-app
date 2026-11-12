@@ -3,22 +3,45 @@ const UNITS = '公斤|千克|kg|克|g|件|个|箱|包|斤|两|吨|盒|袋|桶|�
 const QUANTITY = '[+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
 const normalizeDigits = text => text.replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 const nameKey = name => String(name ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+const productKey = name => nameKey(name).replace(/(?<![零一二两三四五六七八九十百])[一二两三四五六七八九十](?=斤)/g,
+  digit => ({一:1,二:2,两:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10})[digit]);
 
 export function matchingProducts(name, products = []) {
-  const key=nameKey(name);
+  const literal=nameKey(name);
+  const key=productKey(name);
   if (!key) return [];
-  const exact = products.filter(product=>nameKey(product.name)===key);
+  const exact = products.filter(product=>nameKey(product.name)===literal);
   if (exact.length) return exact;
+  const equivalent = products.filter(product=>productKey(product.name)===key);
+  if (equivalent.length) return equivalent;
   const aliases = products.filter(product =>
-    Array.isArray(product.aliases) && product.aliases.some(alias=>nameKey(alias)===key));
+    Array.isArray(product.aliases) && product.aliases.some(alias=>productKey(alias)===key));
   if (aliases.length) return aliases;
   // Chat orders may append 卷 to an existing name or alias. Keep brand and weight;
   // never remove a meaningful form such as 砖 or guess an arbitrary substring.
-  if (!key.endsWith('卷')) return [];
-  const base = key.slice(0, -1);
-  if (!base || /[卷砖块]$/.test(base)) return [];
-  return products.filter(product => nameKey(product.name) === base ||
-    (Array.isArray(product.aliases) && product.aliases.some(alias=>nameKey(alias)===base)));
+  const base = key.endsWith('卷') && !/[卷砖块]卷$/.test(key) ? key.slice(0, -1) : key;
+  const withoutRoll = products.filter(product => productKey(product.name) === base ||
+    (Array.isArray(product.aliases) && product.aliases.some(alias=>productKey(alias)===base)));
+  if (withoutRoll.length) return withoutRoll;
+  // A detailed suffix can omit a brand prefix (尚品后腿 → 伊羴尚品后腿).
+  // Short generic words and omitted weights/numeric specifications cannot select stock.
+  if ((base.match(/[\u3400-\u9fff]/g) || []).length < 4) return [];
+  return products.filter(product => {
+    const full = productKey(product.name);
+    if (!full.endsWith(base)) return false;
+    const omitted = full.slice(0, -base.length);
+    return omitted && !/\d|斤|公斤|千克|kg|克|号/.test(omitted);
+  });
+}
+
+// Search may show several candidates; only findProduct may automatically select one.
+export function searchProducts(name, products = []) {
+  const key = productKey(name);
+  if (!key) return products;
+  const preferred = matchingProducts(name, products);
+  return [...preferred, ...products.filter(product => !preferred.includes(product) &&
+    [product.name, ...(Array.isArray(product.aliases) ? product.aliases : [])]
+      .some(value => productKey(value).includes(key)))];
 }
 export function findProduct(name, products = []) {
   const matches=matchingProducts(name,products);
