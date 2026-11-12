@@ -4,7 +4,7 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js?v=24';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers, searchProducts } from './parser.js?v=24';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, suggestedCustomers, searchProducts } from './parser.js?v=25';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
@@ -104,11 +104,14 @@ function captureWorkspaceDraft(sourceId, previewId) {
       const select = row.querySelector('.ep-product');
       const option = select.selectedOptions[0];
       const customer = row.querySelector('.ep-customer').value;
+      const choice = row.querySelector('.ep-customer-choice');
       return {
         product: select.value ? { id: select.value, name: option.dataset.name || '',
           unit: option.dataset.unit || '件', spec: option.dataset.spec || '' } : null,
         rawName: resolved?.[Number(row.dataset.idx)]?.parsed?.rawName || '',
-        customer, quantity: row.querySelector('.ep-qty').value,
+        customer, customerChoice: choice?.value ? { id: choice.value, name: choice.selectedOptions[0]?.dataset.name || '' } : null,
+        requiresCustomerChoice: row.dataset.customerNeedsChoice === 'true',
+        quantity: row.querySelector('.ep-qty').value,
         unit: row.querySelector('.ep-unit').value,
         phone: findCustomer(customer,[{name:row.dataset.customer || ''}]) ? row.dataset.phone || '' : ''
       };
@@ -143,10 +146,13 @@ function restoreWorkspace() {
     const resolved = draft.rows.filter(row=>row && typeof row === 'object').map(row=>({
       parsed: { rawCustomer: String(row.customer || ''), rawName: String(row.rawName || ''),
         quantity: String(row.quantity ?? ''), unit: String(row.unit || ''),
-        customer: {_phone:String(row.phone || '')},
+        customer: typeof row.customerChoice?.id === 'string'
+          ? { id: row.customerChoice.id, name: String(row.customerChoice.name || ''), entry_match_pending: row.customerChoice.entry_match_pending === true, _phone:String(row.phone || '') }
+          : { _phone:String(row.phone || '') },
         error: validDailyQuantity(Number(row.quantity)) ? null : '数量需更正' },
       product: typeof row.product?.id === 'string' ? { id: row.product.id,
         name: String(row.product.name || ''), spec: String(row.product.spec || ''), unit: String(row.product.unit || '件') } : null,
+      requiresCustomerChoice: row.requiresCustomerChoice === true,
       needCreate: false
     }));
     source.dataset.resolved = JSON.stringify(resolved);
@@ -565,7 +571,7 @@ async function openQuickInModal(productId, productName, unit) {
   document.getElementById('quickInTitle').textContent = `📥 快捷入库 - ${productName}`;
   document.getElementById('quickInQty').value = '';
   document.getElementById('quickInModalOverlay').dataset.productId = productId;
-  const customers = await loadCustomers();
+  const customers = await loadEntryCustomers();
   document.getElementById('quickInCustomer').innerHTML = '<option value="">选择客户</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
   document.getElementById('quickInModalOverlay').style.display = 'flex';
@@ -577,11 +583,8 @@ async function handleQuickInCore() {
   const qty = Number(document.getElementById('quickInQty').value);
   if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customerId = document.getElementById('quickInCustomer').value || null;
-  const customers = await loadCustomers();
-  const customer = customerId ? customers.find(c => c.id === customerId) : null;
-
   try {
-    await saveDailyRecord('quickInModalOverlay','createInbound',{ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
+    await saveDailyRecord('quickInModalOverlay','createInbound',{ product_id: productId, customer_id: customerId, quantity: qty, recorded_at: today() });
     showToast('入库成功 ✅', 'success');
     document.getElementById('quickInModalOverlay').style.display = 'none';
     await renderStock();
@@ -595,7 +598,7 @@ async function openQuickOutModal(productId, productName, unit) {
   document.getElementById('quickOutTitle').textContent = `📤 快捷出库 - ${productName}`;
   document.getElementById('quickOutQty').value = '';
   document.getElementById('quickOutModalOverlay').dataset.productId = productId;
-  const customers = await loadCustomers();
+  const customers = await loadEntryCustomers();
   document.getElementById('quickOutCustomer').innerHTML = '<option value="">选择客户</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
   document.getElementById('quickOutModalOverlay').style.display = 'flex';
@@ -607,11 +610,8 @@ async function handleQuickOutCore() {
   const qty = Number(document.getElementById('quickOutQty').value);
   if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customerId = document.getElementById('quickOutCustomer').value || null;
-  const customers = await loadCustomers();
-  const customer = customerId ? customers.find(c => c.id === customerId) : null;
-
   try {
-    await saveDailyRecord('quickOutModalOverlay','createOutbound',{ product_id: productId, customer_id: customerId, customer_name: customer?.name || '', quantity: qty, recorded_at: today() });
+    await saveDailyRecord('quickOutModalOverlay','createOutbound',{ product_id: productId, customer_id: customerId, quantity: qty, recorded_at: today() });
     showToast('出库成功 ✅', 'success');
     document.getElementById('quickOutModalOverlay').style.display = 'none';
     await renderStock();
@@ -624,7 +624,7 @@ async function handleQuickOutCore() {
 async function renderInboundForm() {
   const previousProduct = document.getElementById('inboundProduct').value;
   const previousCustomer = document.getElementById('inboundCustomer').value;
-  const [products, customers] = await Promise.all([loadProducts(), loadCustomers()]);
+  const [products, customers] = await Promise.all([loadProducts(), loadEntryCustomers()]);
   const pSel = document.getElementById('inboundProduct');
   pSel.innerHTML = '<option value="">请选择商品</option>' +
     products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} ${p.spec ? '(' + escapeHtml(p.spec) + ')' : ''}</option>`).join('');
@@ -632,7 +632,7 @@ async function renderInboundForm() {
   cSel.innerHTML = '<option value="">请选择客户（可选）</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} ${c.phone ? '📱' + escapeHtml(c.phone) : ''}</option>`).join('');
   document.getElementById('inboundProduct').value = previousProduct;
-  document.getElementById('inboundCustomer').value = previousCustomer;
+  restoreFormCustomer(cSel, previousCustomer);
   if (!document.getElementById('inboundDate').value) document.getElementById('inboundDate').value = today();
 }
 
@@ -643,12 +643,9 @@ async function handleInboundSubmitCore(e) {
   const qty = Number(document.getElementById('inboundQty').value);
   if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customer_id = document.getElementById('inboundCustomer').value || null;
-  const customers = await loadCustomers();
-  const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
-
   try {
     await saveDailyRecord('inboundForm','createInbound',{
-      product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
+      product_id, customer_id, quantity: qty,
       unit_price: null,
       note: document.getElementById('inboundNote').value.trim(),
       recorded_at: document.getElementById('inboundDate').value
@@ -665,7 +662,7 @@ async function handleInboundQuickParse() {
   const text = document.getElementById('inboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
   try {
-  const customers = await loadCustomers(true);
+  const customers = await loadEntryCustomers(true);
   const products = await loadProducts(true);
   const parsed = parseQuickEntry(text, customers, products);
   if (document.getElementById('inboundQuickText').value !== text) return;
@@ -692,13 +689,13 @@ async function handleInboundExcelSubmit() {
 async function renderOutboundForm() {
   const previousProduct = document.getElementById('outboundProduct').value;
   const previousCustomer = document.getElementById('outboundCustomer').value;
-  const [products, customers] = await Promise.all([loadProducts(), loadCustomers()]);
+  const [products, customers] = await Promise.all([loadProducts(), loadEntryCustomers()]);
   document.getElementById('outboundProduct').innerHTML = '<option value="">请选择商品</option>' +
     products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} ${p.spec ? '(' + escapeHtml(p.spec) + ')' : ''}</option>`).join('');
   document.getElementById('outboundCustomer').innerHTML = '<option value="">请选择客户（可选）</option>' +
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} ${c.phone ? '📱' + escapeHtml(c.phone) : ''}</option>`).join('');
   document.getElementById('outboundProduct').value = previousProduct;
-  document.getElementById('outboundCustomer').value = previousCustomer;
+  restoreFormCustomer(document.getElementById('outboundCustomer'), previousCustomer);
   if (!document.getElementById('outboundDate').value) document.getElementById('outboundDate').value = today();
 }
 
@@ -709,9 +706,6 @@ async function handleOutboundSubmitCore(e) {
   const qty = Number(document.getElementById('outboundQty').value);
   if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customer_id = document.getElementById('outboundCustomer').value || null;
-  const customers = await loadCustomers();
-  const customer = customer_id ? customers.find(c => c.id === customer_id) : null;
-
   try {
     const stock = await DB.fetchProductStock(product_id);
     if (stock && qty > parseFloat(stock.stock_qty)) {
@@ -721,7 +715,7 @@ async function handleOutboundSubmitCore(e) {
 
   try {
     await saveDailyRecord('outboundForm','createOutbound',{
-      product_id, customer_id, customer_name: customer?.name || '', quantity: qty,
+      product_id, customer_id, quantity: qty,
       unit_price: null,
       note: document.getElementById('outboundNote').value.trim(),
       recorded_at: document.getElementById('outboundDate').value
@@ -738,7 +732,7 @@ async function handleOutboundQuickParse() {
   const text = document.getElementById('outboundQuickText').value;
   if (!text.trim()) { showToast('请粘贴内容', 'warning'); return; }
   try {
-  const customers = await loadCustomers(true);
+  const customers = await loadEntryCustomers(true);
   const products = await loadProducts(true);
   const parsed = parseQuickEntry(text, customers, products);
   if (document.getElementById('outboundQuickText').value !== text) return;
@@ -787,8 +781,16 @@ function collectEditablePreview(containerId) {
       return null;
     }
     const rawCustomer = row.querySelector('.ep-customer').value.trim();
-    const sameCustomer = findCustomer(rawCustomer, [{ name: row.dataset.customer || '' }]);
-    items.push({ productId, rawCustomer, rawName, quantity, unit: row.querySelector('.ep-unit').value.trim(), phone: sameCustomer ? row.dataset.phone || '' : '' });
+    const choice = row.querySelector('.ep-customer-choice');
+    if (rawCustomer !== row.dataset.customerLookup) syncPreviewCustomer(row);
+    if (!choice.value && (rawCustomer || row.dataset.customerNeedsChoice === 'true')) {
+      row.classList.add('row-error');
+      choice.focus();
+      choice.setAttribute('aria-invalid', 'true');
+      showToast(`第 ${index + 1} 行${rawCustomer ? '「' + rawCustomer + '」' : ''}请选择已有客户；新客户请先在客户页添加`, 'warning');
+      return null;
+    }
+    items.push({ productId, customerId: choice.value || null, rawCustomer, rawName, quantity, unit: row.querySelector('.ep-unit').value.trim(), phone: row.dataset.customer === rawCustomer ? row.dataset.phone || '' : '' });
   }
   return items;
 }
@@ -802,10 +804,35 @@ function initEntryPreviewGuards() {
     });
     for (const previewId of [`${direction}ParsePreview`, `${direction}ExcelPreview`]) {
       const preview = document.getElementById(previewId);
+      const expandChoices = event => {
+        const choice = event.target;
+        if (choice.matches('.ep-customer-choice') && !choice.dataset.expanded) {
+          syncPreviewCustomer(choice.closest('tr'), { expand: true });
+        }
+      };
+      preview.addEventListener('focusin', expandChoices);
+      preview.addEventListener('pointerdown', expandChoices);
       const onEdit = event => {
         event.target.removeAttribute('aria-invalid');
         const row = event.target.closest('tr');
-        if (row) updateEntryPreviewRow(row, event.target.matches('.ep-product'));
+        if (!row) return;
+        if (event.target.matches('.ep-customer')) syncPreviewCustomer(row);
+        if (event.type === 'change' && event.target.matches('.ep-customer-choice')) {
+          const id = event.target.value;
+          const raw = row.querySelector('.ep-customer').value.trim();
+          row.dataset.customerNeedsChoice = String(!id && Boolean(raw));
+          syncPreviewCustomer(row, { expand: true });
+          if (id && raw) {
+            const customer = { id, name: event.target.selectedOptions[0].dataset.name };
+            for (const other of preview.querySelectorAll('tbody tr')) {
+              if (other !== row && !other.querySelector('.ep-customer-choice').value && other.querySelector('.ep-customer').value.trim() === raw) {
+                syncPreviewCustomer(other, { trusted: customer });
+                updateEntryPreviewRow(other);
+              }
+            }
+          }
+        }
+        updateEntryPreviewRow(row, event.target.matches('.ep-product'));
       };
       preview.addEventListener('input', onEdit);
       preview.addEventListener('change', onEdit);
@@ -844,7 +871,7 @@ async function handleExcelFile(e, fileId, previewId, submitId) {
   if (!file) return;
   try {
     const rows = await readExcelFile(file);
-    const [customers, products] = await Promise.all([loadCustomers(), loadProducts()]);
+    const [customers, products] = await Promise.all([loadEntryCustomers(true), loadProducts()]);
     if(input.dataset.readVersion!==version)return;
     const { resolved } = parseExcelData(rows, customers, products);
     document.getElementById(fileId).dataset.resolved = JSON.stringify(resolved);
@@ -891,10 +918,13 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
   button.disabled = true;
   button.textContent = '正在保存…';
   try {
-    const [products, customers] = await Promise.all([loadProducts(true), loadCustomers(true)]);
+    const [products, customers] = await Promise.all([loadProducts(true), loadEntryCustomers(true)]);
+    const customersById = new Map(customers.map(customer => [customer.id, customer]));
     const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
     for (const item of editedItems) {
-      if (matchingCustomers(item.rawCustomer,customers).length > 1) throw new Error(`「${item.rawCustomer}」对应多个客户，请补充完整名称或地址`);
+      if ((item.customerId || item.rawCustomer) && !customersById.has(item.customerId)) {
+        throw new Error(`请为「${item.rawCustomer || '该行'}」重新选择已有客户，这批记录尚未保存`);
+      }
       const product = products.find(product=>product.id===item.productId);
       if (!product) throw new Error(`「${item.rawName}」已不在商品资料中，请重新解析并选择已有商品`);
       if (product && item.unit && unitKey(item.unit) !== unitKey(product.unit)) {
@@ -904,14 +934,10 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
     const records = [];
     for (const item of editedItems) {
       const product = products.find(product=>product.id===item.productId);
-      let customer = findCustomer(item.rawCustomer, customers);
-      if (item.rawCustomer && !customer) {
-        customer = await DB.createCustomer({ name: item.rawCustomer, phone: item.phone, note: '' });
-        customers.push(customer);
-      }
+      const customer = customersById.get(item.customerId);
       records.push({
         product_id: product.id, customer_id: customer?.id || null,
-        customer_name: customer?.name || item.rawCustomer, quantity: item.quantity,
+        customer_name: customer?.name || '', quantity: item.quantity,
         unit_price: null, note: '', recorded_at: today()
       });
     }
@@ -1298,23 +1324,77 @@ async function handleCustomerSaveCore() {
 
 // ==================== 解析预览 ====================
 
-function updateEntryPreviewRow(row, productChanged = false) {
+// Keep the typed label separate from the customer ID the user will actually book to.
+function syncPreviewCustomer(row, { catalog = getState('customers')?.filter(isEntryCustomer), trusted, expand = false } = {}) {
+  const input = row.querySelector('.ep-customer');
+  const choice = row.querySelector('.ep-customer-choice');
+  const raw = input.value.trim();
+  const edited = row.dataset.customerLookup !== undefined && row.dataset.customerLookup !== raw;
+  const previous = choice.selectedOptions[0];
+  const saved = trusted || (!edited && choice.value ? { id: choice.value, name: previous.dataset.name } : null);
+  let customer = null;
+  if (edited) row.dataset.customerNeedsChoice = 'false';
+  if (saved?.id) {
+    if (isEntryCustomer(saved)) customer = catalog == null ? saved : catalog.find(c => String(c.id) === String(saved.id));
+    row.dataset.customerNeedsChoice = String(!customer);
+  } else if (row.dataset.customerNeedsChoice !== 'true' && raw) {
+    customer = findCustomer(raw, catalog || []);
+  }
+  row.dataset.customerLookup = raw;
+  const unresolved = !customer && Boolean(raw || row.dataset.customerNeedsChoice === 'true');
+  const option = (c, label = c.name) => `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}"${String(c.id) === String(customer?.id) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  const options = [`<option value="">${unresolved ? '请选择已有客户' : raw ? '重选／修改客户' : '无客户（可选择）'}</option>`];
+  if (expand) {
+    const all = [...(catalog || (customer ? [customer] : []))].sort((a,b) => a.name.localeCompare(b.name, 'zh-CN'));
+    const counts = new Map();
+    for (const c of all) counts.set(c.name, (counts.get(c.name) || 0) + 1);
+    const label = c => counts.get(c.name) > 1 ? `${c.name} · ${[c.phone, c.note, '#' + String(c.id).slice(-6)].filter(Boolean).join(' · ')}` : c.name;
+    const recommended = raw ? suggestedCustomers(raw, all).slice(0, 6) : [];
+    const ids = new Set(recommended.map(c => c.id));
+    const group = (name, items) => items.length ? `<optgroup label="${name}">${items.map(c => option(c, label(c))).join('')}</optgroup>` : '';
+    options.push(group('可能是这些客户', recommended), group('其他已有客户', all.filter(c => !ids.has(c.id))));
+    choice.dataset.expanded = 'true';
+  } else {
+    if (customer) options.push(option(customer));
+    delete choice.dataset.expanded;
+  }
+  choice.innerHTML = options.join('');
+  choice.removeAttribute('aria-invalid');
+  input.hidden = !unresolved && document.activeElement !== input;
+  const source = row.querySelector('.ep-customer-source');
+  source.textContent = customer && raw && customer.name !== raw ? '原文：' + raw : '';
+  source.hidden = !source.textContent;
+}
+
+function refreshPreviewCustomers(customers) {
+  const catalog = customers.filter(isEntryCustomer);
+  for (const [, previewId] of batchDrafts) {
+    for (const choice of document.getElementById(previewId).querySelectorAll('.ep-customer-choice')) {
+      const row = choice.closest('tr');
+      syncPreviewCustomer(row, { catalog, expand: document.activeElement === choice });
+      updateEntryPreviewRow(row);
+    }
+  }
+  persistWorkspace();
+}
+
+function updateEntryPreviewRow(row, productChanged = false, initial = false) {
   const select = row.querySelector('.ep-product');
   const unitInput = row.querySelector('.ep-unit');
   const selected = select.selectedOptions[0];
   if (productChanged && select.value) unitInput.value = selected.dataset.unit || '件';
   const missing = !select.value;
   const invalidQty = !validDailyQuantity(Number(row.querySelector('.ep-qty').value));
-  const ambiguousCustomer = matchingCustomers(row.querySelector('.ep-customer').value, getState('customers') || []).length > 1;
+  const needsCustomer = !row.querySelector('.ep-customer-choice').value && (row.querySelector('.ep-customer').value.trim() || row.dataset.customerNeedsChoice === 'true');
   const unitKey = value => ({kg:'公斤','千克':'公斤',g:'克'})[value.toLowerCase()] || value;
   const invalidUnit = !missing && Boolean(unitInput.value.trim()) && unitKey(unitInput.value.trim()) !== unitKey(selected.dataset.unit || '件');
-  const invalid = missing || invalidQty || ambiguousCustomer || invalidUnit;
+  const invalid = missing || invalidQty || needsCustomer || invalidUnit;
   row.classList.toggle('row-error', invalid);
   row.classList.toggle('row-matched', !invalid);
   row.classList.remove('row-new');
   const badge = row.querySelector('.ep-status');
   badge.className = `badge ep-status badge-${invalid ? 'danger' : 'success'}`;
-  badge.textContent = missing ? '请选择商品' : invalidQty ? '数量需整数' : ambiguousCustomer ? '客户需核对' : invalidUnit ? '单位需核对' : '已选择';
+  badge.textContent = missing ? '请选择商品' : invalidQty ? '数量需整数' : needsCustomer ? '请选择客户' : invalidUnit ? '单位需核对' : initial ? '已匹配' : '已选择';
   badge.title = '';
 }
 
@@ -1348,7 +1428,7 @@ function renderParsePreview(containerId, resolved, catalog = getState('products'
     return;
   }
   document.getElementById(containerId).innerHTML = `
-    <p class="preview-summary" role="status">识别到 ${resolved.length} 条商品记录。商品可以下拉改选；未匹配的请先选择，新商品请先在库存中添加。</p>
+    <p class="preview-summary" role="status">识别到 ${resolved.length} 条商品记录。客户和商品都可以改选。客户没认准时，选一次就会填到同名的待选行。新客户请先在客户页添加，新商品请先在库存中添加。</p>
     <div class="editable-preview"><table>
       <thead><tr><th>客户</th><th>商品</th><th>数量</th><th>单位</th><th>状态</th><th></th></tr></thead>
       <tbody>${resolved.map((item, index) => {
@@ -1357,7 +1437,7 @@ function renderParsePreview(containerId, resolved, catalog = getState('products'
         const options = previewProductOptions(products,item.product?.id);
         const original = !item.product || item.product.name !== parsed.rawName ? `<small class="ep-source">原文：${escapeHtml(parsed.rawName)}</small>` : '';
         return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
-          <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户（可选）"></td>
+          <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户原文" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户原文（可选）"><select class="ep-input ep-customer-choice" aria-label="第 ${index + 1} 行选择已有客户"></select><small class="ep-source ep-customer-source" hidden></small></td>
           <td><select class="ep-input ep-name ep-product" aria-label="第 ${index + 1} 行商品">${options}</select>${original}</td>
           <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="1" inputmode="numeric" min="1"></td>
           <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>
@@ -1366,6 +1446,14 @@ function renderParsePreview(containerId, resolved, catalog = getState('products'
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
+  const rows = document.getElementById(containerId).querySelectorAll('tbody tr');
+  const customerCatalog = getState('customers')?.filter(isEntryCustomer);
+  rows.forEach((row, i) => {
+    const item = resolved[i];
+    row.dataset.customerNeedsChoice = String(Boolean(item.requiresCustomerChoice));
+    syncPreviewCustomer(row, { catalog: customerCatalog, trusted: item.parsed.customer?.id ? item.parsed.customer : null });
+    updateEntryPreviewRow(row, false, true);
+  });
   persistWorkspace();
 }
 
@@ -1384,39 +1472,30 @@ async function loadCustomers(force = false) {
   let c = getState('customers');
   if (force || !c) {
     c = await DB.fetchCustomers(); setState('customers', c);
+    if (workspaceReady) refreshPreviewCustomers(c);
   }
   return getState('customers') || [];
 }
 
-async function autoCreateCustomers(parsedItems) {
-  const customers = await loadCustomers();
-  const existingNames = new Set(customers.map(c => c.name));
-  const newMap = {};
+// Keep disputed customer cards in customer management and historical records only.
+function isEntryCustomer(customer) { return customer.entry_match_pending !== true; }
 
-  for (const item of parsedItems) {
-    const name = item.rawCustomer;
-    if (!name || existingNames.has(name) || newMap[name]) continue;
-
-    // 尝试从解析结果中提取手机号
-    const phone = item.customer?._phone || '';
-
-    try {
-      const nc = await DB.createCustomer({ name, phone, note: '' });
-      newMap[name] = { id: nc.id, name: nc.name };
-      existingNames.add(name);
-      showToast('已创建新客户: ' + name + (phone ? ' 📱' + phone : ''), 'info');
-    } catch (err) {
-      console.error('自动创建客户失败:', name, err);
-    }
-  }
-
-  // 已有的客户也要放进 map
-  for (const c of customers) {
-    if (!newMap[c.name]) newMap[c.name] = { id: c.id, name: c.name };
-  }
-
-  return newMap;
+async function loadEntryCustomers(force = false) {
+  return (await loadCustomers(force)).filter(isEntryCustomer);
 }
+
+function restoreFormCustomer(select, previousId) {
+  select.value = previousId;
+  if (previousId && !select.value) {
+    const unavailable = document.createElement('option');
+    unavailable.value = previousId;
+    unavailable.textContent = '原客户已不可用，请重选';
+    unavailable.disabled = true;
+    select.append(unavailable);
+    select.value = previousId;
+  }
+}
+
 
 function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
@@ -1446,7 +1525,14 @@ async function handleCustomerSave(event) { event?.preventDefault?.(); return wit
 function validDailyQuantity(value) { return Number.isSafeInteger(value) && value > 0 && value <= 9999999999; }
 
 async function saveDailyRecord(scope,method,record) {
-  const [payload]=saveIntents.records(scope,[record]);
+  let customerName = '';
+  if (record.customer_id) {
+    const customers = await loadEntryCustomers(true);
+    const customer = customers.find(c => c.id === record.customer_id);
+    if (!customer) throw new Error('所选客户已不可用于录单，请重新选择客户');
+    customerName = customer.name;
+  }
+  const [payload]=saveIntents.records(scope,[{ ...record, customer_name: customerName }]);
   const saved=await DB[method](payload);
   saveIntents.complete(scope);
   return saved;

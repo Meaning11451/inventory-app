@@ -1116,7 +1116,9 @@ input[type="file"].form-input::file-selector-button:hover {
 .editable-preview .ep-input { font-size: 16px; min-height: 44px; }
 .editable-preview .ep-remove { min-width: 44px; min-height: 44px; }
 #inboundQuickText, #outboundQuickText { min-height: 240px; }
-.editable-preview .ep-customer { min-width: 120px; }
+.editable-preview :is(.ep-customer, .ep-customer-choice) { min-width: 136px; max-width: 220px; width: 100%; }
+.editable-preview .ep-customer:not([hidden]) + .ep-customer-choice { margin-top: 4px; }
+.editable-preview :is(.ep-customer, .ep-customer-source)[hidden] { display: none; }
 .editable-preview .ep-name { min-width: 150px; }
 .editable-preview .ep-qty { min-width: 76px; }
 .editable-preview .ep-unit { min-width: 60px; }

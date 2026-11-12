@@ -183,7 +183,7 @@ test('all quantity controls step by one and fractional edits cannot partially up
 
 test('unknown shortcut products require selection and never create a product',async t=>{
  const h=await harness();t.after(h.close);h.win.initEntryPreviewGuards();
- h.byId('outboundQuickText').value='新客户\n陌生商品 5件';
+ h.byId('outboundQuickText').value='陌生商品 5件';
  await h.win.handleOutboundQuickParse();
  const select=h.byId('outboundParsePreview').querySelector('.ep-product');
  assert.equal(select.value,'');

@@ -48,30 +48,126 @@ export function findProduct(name, products = []) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-export function matchingCustomers(name, customers = []) {
-  const customerKey = value => nameKey(value).replace(/[,、;]/g, '');
-  const key = customerKey(name);
-  if (!key) return [];
-  const exact = customers.filter(c => c.name === name);
-  if (exact.length) return exact;
-  const normalized = customers.filter(c => customerKey(c.name) === key);
-  if (normalized.length) return normalized;
-  const parts = String(name ?? '').normalize('NFKC').split(/[,、;]/).map(part=>nameKey(part)).filter(Boolean);
-  const candidates = new Set([key]);
-  if (parts.length === 2) candidates.add(parts[1] + parts[0]);
-  const reordered = customers.filter(c => candidates.has(customerKey(c.name)));
-  if (reordered.length) return reordered;
-  // A known location suffix may be omitted; ordinary name substrings never match.
-  return customers.filter(c => {
-    const full = customerKey(c.name);
-    const withoutAddress = full.replace(/(?:第)?\d+排(?:第)?\d+号$/, '');
-    return withoutAddress !== full && candidates.has(withoutAddress);
+const stallAddress = /(?:第)?\d+排(?:第)?\d+号$/u;
+const customerSeparators = /[\s,、;:·•/()\[\]【】.。—-]+/u;
+
+function customerNameParts(name) {
+  return String(name ?? '').normalize('NFKC').toLowerCase().split(customerSeparators).filter(Boolean);
+}
+
+function joinedCustomerName(parts) {
+  // Keep numeric groups distinct: a stall such as 1-23 must not collapse into 12-3.
+  return parts.reduce((key, part) => key + (/\d$/.test(key) && /^\d/.test(part) ? '-' : '') + part, '')
+    .replace(/第?(\d+)排第?(\d+)号$/u, '$1排$2号');
+}
+
+function customerNameForms(parts) {
+  const key = joinedCustomerName(parts);
+  if (parts.length === 2 && parts.every(part => /\p{L}/u.test(part))) {
+    return [key, joinedCustomerName([parts[1], parts[0]])];
+  }
+  return [key];
+}
+
+function customerNames(customer) {
+  return [customer.name, ...(Array.isArray(customer.aliases) ? customer.aliases : [])].filter(Boolean);
+}
+
+function matchesCustomerForms(input, stored) {
+  return stored.some(key => {
+    if (input.includes(key)) return true;
+    const withoutAddress = key.replace(stallAddress, '');
+    return key !== withoutAddress && withoutAddress.length >= 2 && input.includes(withoutAddress);
   });
+}
+
+export function matchingCustomers(name, customers = []) {
+  const parts = customerNameParts(name);
+  if (!parts.length) return [];
+  const exact = customers.filter(customer => customer.name === name);
+  if (exact.length) return exact;
+  const input = customerNameForms(parts);
+  const normalized = [];
+  const aliases = [];
+  const contextual = [];
+  for (const customer of customers) {
+    const canonical = customerNameForms(customerNameParts(customer.name));
+    if (canonical[0] === input[0]) normalized.push(customer);
+    else if (matchesCustomerForms(input, canonical)) contextual.push(customer);
+    if (Array.isArray(customer.aliases) && customer.aliases.some(alias =>
+      matchesCustomerForms(input, customerNameForms(customerNameParts(alias))))) aliases.push(customer);
+  }
+  return [...new Set([...(normalized.length ? normalized : contextual), ...aliases])];
 }
 
 export function findCustomer(name, customers = []) {
   const matches = matchingCustomers(name, customers);
   return matches.length === 1 ? matches[0] : null;
+}
+
+// Only suggestions use typo tolerance. One missing, different, or transposed character
+// can be a different person; the order must never be assigned based on that alone.
+function oneNameEdit(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let index = 0;
+  while (index < a.length && a[index] === b[index]) index++;
+  if (a.length > b.length) return a.slice(index + 1) === b.slice(index);
+  if (b.length > a.length) return a.slice(index) === b.slice(index + 1);
+  return a.slice(index + 1) === b.slice(index + 1) ||
+    (a[index] === b[index + 1] && a[index + 1] === b[index] && a.slice(index + 2) === b.slice(index + 2));
+}
+
+function customerSuggestionScore(input, candidate) {
+  const short = Math.min(input.length, candidate.length);
+  const long = Math.max(input.length, candidate.length);
+  if (short < 2) return 0;
+  if (input === candidate) return 100;
+  if (input.includes(candidate) || candidate.includes(input)) return 60 + 30 * short / long;
+  if (short >= 3 && oneNameEdit(input, candidate)) return 75;
+  if (short >= 4 && short === long) {
+    // No separator tells us which part is the location; offer both orders for review.
+    const cut = (candidate + candidate).indexOf(input, 1);
+    if (cut >= 2 && cut <= short - 2) return 85;
+  }
+  return 0;
+}
+
+export function suggestedCustomers(name, customers = []) {
+  const parts = customerNameParts(name);
+  if (!parts.length) return [];
+  const strong = matchingCustomers(name, customers);
+  const inputs = customerNameForms(parts).flatMap(key => [key, key.replace(stallAddress, '')]);
+  const fragments = parts.length > 1 ? [...new Set(parts.filter(part => part.length >= 2 && /\p{L}/u.test(part)))] : [];
+  const frequency = new Map();
+  const suggestions = [];
+  for (const customer of customers) {
+    if (strong.includes(customer)) continue;
+    let score = 0;
+    const matched = new Set();
+    for (const value of customerNames(customer)) {
+      for (const form of customerNameForms(customerNameParts(value))) {
+        const base = form.replace(stallAddress, '');
+        for (const part of fragments) {
+          if (base.includes(part)) matched.add(part);
+        }
+        for (const input of inputs) {
+          score = Math.max(score, customerSuggestionScore(input, form), customerSuggestionScore(input, base));
+        }
+      }
+    }
+    if (score || matched.size) suggestions.push({ customer, score, matched });
+    for (const part of matched) frequency.set(part, (frequency.get(part) || 0) + 1);
+  }
+  // A shared name can identify useful choices even when the delivery route changed.
+  // Let a rare fragment outrank a locality repeated across many customers.
+  for (const item of suggestions) {
+    if (!item.matched.size) continue;
+    let fragmentScore = 40 + 8 * Math.min(2, item.matched.size);
+    for (const part of item.matched) fragmentScore += Math.min(4, part.length) * 3 / Math.sqrt(frequency.get(part));
+    item.score = Math.max(item.score, fragmentScore);
+  }
+  suggestions.sort((a, b) => b.score - a.score);
+  return [...strong, ...suggestions.slice(0, Math.max(0, 8 - strong.length)).map(item => item.customer)];
 }
 
 function parseProductLine(text, products) {
@@ -120,11 +216,14 @@ export function parseQuickEntry(text, customers = [], products = []) {
     const line = rawLine.replace(/^\uFEFF/, '').trim();
     if (!line) return;
     const heading = line.replace(/^客户\s*[:：]\s*/, '').replace(/[:：]\s*$/, '').trim();
-    const knownCustomer = findCustomer(heading, customers);
+    const customerMatches = matchingCustomers(heading, customers);
+    const knownCustomer = customerMatches.length === 1 ? customerMatches[0] : null;
     const phone = findProduct(line, products) ? null : phoneHeader(heading);
     const productLine = parseProductLine(line, products);
     const explicitHeading = /^客户\s*[:：]/.test(line) || /[:：]$/.test(line);
-    if (knownCustomer || phone || explicitHeading || (!productLine && !/\d/.test(normalizeDigits(line)) && !findProduct(line, products))) {
+    const stallHeading = stallAddress.test(joinedCustomerName(customerNameParts(heading)));
+    if (customerMatches.length || phone || explicitHeading ||
+        (!productLine && (stallHeading || !/\d/.test(normalizeDigits(line))) && !findProduct(line, products))) {
       currentCustomerName = knownCustomer?.name || phone?.name || heading;
       currentCustomer = knownCustomer || findCustomer(currentCustomerName, customers) || (phone ? { _phone: phone.phone, _isNew: true } : null);
       return;
