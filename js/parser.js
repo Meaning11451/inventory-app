@@ -1,3 +1,6 @@
+import { findCustomer, matchingCustomers, isCustomerStallHeading } from './customer-match.js';
+export { findCustomer, matchingCustomers, suggestedCustomers } from './customer-match.js';
+
 // Matching rules are shared by parsing, preview, and saving.
 const UNITS = '公斤|千克|kg|克|g|件|个|箱|包|斤|两|吨|盒|袋|桶|瓶|把|条|块|片|卷|只|双|套|台|辆|支|根|颗|粒|对|打|盘|筐|笼|提|板';
 const QUANTITY = '[+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
@@ -48,133 +51,11 @@ export function findProduct(name, products = []) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-const stallAddress = /(?:第)?\d+排(?:第)?\d+号$/u;
-const customerSeparators = /[\s,、;:·•/()\[\]【】.。—-]+/u;
-
-function customerNameParts(name) {
-  return String(name ?? '').normalize('NFKC').toLowerCase().split(customerSeparators).filter(Boolean);
-}
-
-function joinedCustomerName(parts) {
-  // Keep numeric groups distinct: a stall such as 1-23 must not collapse into 12-3.
-  return parts.reduce((key, part) => key + (/\d$/.test(key) && /^\d/.test(part) ? '-' : '') + part, '')
-    .replace(/第?(\d+)排第?(\d+)号$/u, '$1排$2号');
-}
-
-function customerNameForms(parts) {
-  const key = joinedCustomerName(parts);
-  if (parts.length === 2 && parts.every(part => /\p{L}/u.test(part))) {
-    return [key, joinedCustomerName([parts[1], parts[0]])];
-  }
-  return [key];
-}
-
-function customerNames(customer) {
-  return [customer.name, ...(Array.isArray(customer.aliases) ? customer.aliases : [])].filter(Boolean);
-}
-
-function matchesCustomerForms(input, stored) {
-  return stored.some(key => {
-    if (input.includes(key)) return true;
-    const withoutAddress = key.replace(stallAddress, '');
-    return key !== withoutAddress && withoutAddress.length >= 2 && input.includes(withoutAddress);
-  });
-}
-
-export function matchingCustomers(name, customers = []) {
-  const parts = customerNameParts(name);
-  if (!parts.length) return [];
-  const exact = customers.filter(customer => customer.name === name);
-  if (exact.length) return exact;
-  const input = customerNameForms(parts);
-  const normalized = [];
-  const aliases = [];
-  const contextual = [];
-  for (const customer of customers) {
-    const canonical = customerNameForms(customerNameParts(customer.name));
-    if (canonical[0] === input[0]) normalized.push(customer);
-    else if (matchesCustomerForms(input, canonical)) contextual.push(customer);
-    if (Array.isArray(customer.aliases) && customer.aliases.some(alias =>
-      matchesCustomerForms(input, customerNameForms(customerNameParts(alias))))) aliases.push(customer);
-  }
-  return [...new Set([...(normalized.length ? normalized : contextual), ...aliases])];
-}
-
-export function findCustomer(name, customers = []) {
-  const matches = matchingCustomers(name, customers);
-  return matches.length === 1 ? matches[0] : null;
-}
-
-// Only suggestions use typo tolerance. One missing, different, or transposed character
-// can be a different person; the order must never be assigned based on that alone.
-function oneNameEdit(a, b) {
-  if (Math.abs(a.length - b.length) > 1) return false;
-  let index = 0;
-  while (index < a.length && a[index] === b[index]) index++;
-  if (a.length > b.length) return a.slice(index + 1) === b.slice(index);
-  if (b.length > a.length) return a.slice(index) === b.slice(index + 1);
-  return a.slice(index + 1) === b.slice(index + 1) ||
-    (a[index] === b[index + 1] && a[index + 1] === b[index] && a.slice(index + 2) === b.slice(index + 2));
-}
-
-function customerSuggestionScore(input, candidate) {
-  const short = Math.min(input.length, candidate.length);
-  const long = Math.max(input.length, candidate.length);
-  if (short < 2) return 0;
-  if (input === candidate) return 100;
-  if (input.includes(candidate) || candidate.includes(input)) return 60 + 30 * short / long;
-  if (short >= 3 && oneNameEdit(input, candidate)) return 75;
-  if (short >= 4 && short === long) {
-    // No separator tells us which part is the location; offer both orders for review.
-    const cut = (candidate + candidate).indexOf(input, 1);
-    if (cut >= 2 && cut <= short - 2) return 85;
-  }
-  return 0;
-}
-
-export function suggestedCustomers(name, customers = []) {
-  const parts = customerNameParts(name);
-  if (!parts.length) return [];
-  const strong = matchingCustomers(name, customers);
-  const inputs = customerNameForms(parts).flatMap(key => [key, key.replace(stallAddress, '')]);
-  const fragments = parts.length > 1 ? [...new Set(parts.filter(part => part.length >= 2 && /\p{L}/u.test(part)))] : [];
-  const frequency = new Map();
-  const suggestions = [];
-  for (const customer of customers) {
-    if (strong.includes(customer)) continue;
-    let score = 0;
-    const matched = new Set();
-    for (const value of customerNames(customer)) {
-      for (const form of customerNameForms(customerNameParts(value))) {
-        const base = form.replace(stallAddress, '');
-        for (const part of fragments) {
-          if (base.includes(part)) matched.add(part);
-        }
-        for (const input of inputs) {
-          score = Math.max(score, customerSuggestionScore(input, form), customerSuggestionScore(input, base));
-        }
-      }
-    }
-    if (score || matched.size) suggestions.push({ customer, score, matched });
-    for (const part of matched) frequency.set(part, (frequency.get(part) || 0) + 1);
-  }
-  // A shared name can identify useful choices even when the delivery route changed.
-  // Let a rare fragment outrank a locality repeated across many customers.
-  for (const item of suggestions) {
-    if (!item.matched.size) continue;
-    let fragmentScore = 40 + 8 * Math.min(2, item.matched.size);
-    for (const part of item.matched) fragmentScore += Math.min(4, part.length) * 3 / Math.sqrt(frequency.get(part));
-    item.score = Math.max(item.score, fragmentScore);
-  }
-  suggestions.sort((a, b) => b.score - a.score);
-  return [...strong, ...suggestions.slice(0, Math.max(0, 8 - strong.length)).map(item => item.customer)];
-}
-
 function parseProductLine(text, products) {
   const line = normalizeDigits(text).replace(/[\s，,、;；。]+$/, '');
   if (findProduct(line, products)) return null;
   const patterns = [
-    new RegExp(`^(.+?)(?:\\s+|[，,:：]\\s*)(${QUANTITY})\\s*(${UNITS})?\\s*$`, 'i'),
+    new RegExp(`^(.+?)(?:\\s+|[，,、;；:：]\\s*)(${QUANTITY})\\s*(${UNITS})?\\s*$`, 'i'),
     new RegExp(`^(.+?)(${QUANTITY})\\s*(${UNITS})\\s*$`, 'i'),
     new RegExp(`^(.+?[^\\d\\s])(${QUANTITY})$`, 'i')
   ];
@@ -190,28 +71,32 @@ function phoneHeader(text) {
   return match ? { name: match[1].replace(/[\s，,]+$/, ''), phone: match[2] } : null;
 }
 
-function splitCustomerAndProduct(name, customers, products, grouped) {
-  if (findProduct(name, products)) return { productName: name, customer: null };
-  const parts = name.split(/\s+/);
-  for (let i = parts.length - 1; i > 0; i--) {
-    const customer = findCustomer(parts.slice(0, i).join(' '), customers);
-    if (customer) return { customerName: customer.name, customer, productName: parts.slice(i).join(' ') };
+function splitCustomerAndProduct(name, products) {
+  // A complete product name, including a name shared by two specifications,
+  // can contain spaces. Let the product picker resolve specifications.
+  if (matchingProducts(name, products).length) return { productName: name };
+  let lastSplit;
+  for (const separator of name.matchAll(/[\s，,、;；:：]+/gu)) {
+    const customerName = name.slice(0, separator.index).trim();
+    const productName = name.slice(separator.index + separator[0].length).trim();
+    if (!customerName || !productName) continue;
+    lastSplit = { customerName, productName };
+    // Try the longest product suffix first. The whole prefix is the customer,
+    // even when its first word already matches a known delivery-route alias.
+    if (matchingProducts(productName, products).length) return lastSplit;
   }
-  if (!grouped) {
-    for (let i = 1; i < parts.length; i++) {
-      const productName = parts.slice(i).join(' ');
-      if (findProduct(productName, products)) return { customerName: parts.slice(0, i).join(' '), customer: null, productName };
-    }
-    if (parts.length > 1) return { customerName: parts[0], customer: null, productName: parts.slice(1).join(' ') };
-  }
-  return { productName: name, customer: null };
+  return lastSplit || { productName: name };
 }
 
 /** A customer heading applies until the next heading; standalone product lines also work. */
 export function parseQuickEntry(text, customers = [], products = []) {
   const results = [];
   let currentCustomer = null;
-  let currentCustomerName = '';
+  let currentCustomerText = '';
+  function selectCustomer(text, matched = null, phone = null) {
+    currentCustomerText = phone?.name || text;
+    currentCustomer = matched || findCustomer(currentCustomerText, customers) || (phone ? { _phone: phone.phone } : null);
+  }
   String(text ?? '').replace(/\r\n?/g, '\n').split('\n').forEach((rawLine, lineIndex) => {
     const line = rawLine.replace(/^\uFEFF/, '').trim();
     if (!line) return;
@@ -221,19 +106,22 @@ export function parseQuickEntry(text, customers = [], products = []) {
     const phone = findProduct(line, products) ? null : phoneHeader(heading);
     const productLine = parseProductLine(line, products);
     const explicitHeading = /^客户\s*[:：]/.test(line) || /[:：]$/.test(line);
-    const stallHeading = stallAddress.test(joinedCustomerName(customerNameParts(heading)));
+    const stallHeading = isCustomerStallHeading(heading);
     if (customerMatches.length || phone || explicitHeading ||
         (!productLine && (stallHeading || !/\d/.test(normalizeDigits(line))) && !findProduct(line, products))) {
-      currentCustomerName = knownCustomer?.name || phone?.name || heading;
-      currentCustomer = knownCustomer || findCustomer(currentCustomerName, customers) || (phone ? { _phone: phone.phone, _isNew: true } : null);
+      selectCustomer(heading, knownCustomer, phone);
       return;
     }
-    const split = productLine ? splitCustomerAndProduct(productLine.name, customers, products, Boolean(currentCustomerName)) : null;
-    const customerName = split?.customerName ?? currentCustomerName;
+    const split = productLine ? splitCustomerAndProduct(productLine.name, products) : null;
+    if (split?.customerName) {
+      selectCustomer(split.customerName, null, phoneHeader(split.customerName));
+    }
+    const customerName = currentCustomer?.name || currentCustomerText;
     const quantity = productLine?.quantity ?? null;
     results.push({
       rawCustomer: customerName,
-      customer: split?.customer || (split?.customerName ? findCustomer(customerName, customers) : currentCustomer),
+      ...(currentCustomer?.id && currentCustomerText !== customerName ? { originalCustomer: currentCustomerText } : {}),
+      customer: currentCustomer,
       rawName: split?.productName || line,
       quantity,
       unit: productLine?.unit || null,
@@ -273,6 +161,7 @@ export function parseExcelData(rows, customers = [], products = []) {
     const error = matchingCustomers(customerName, customers).length > 1 ? '客户名称对应多个客户，请补充完整名称或地址' : !Number.isSafeInteger(quantity) || quantity <= 0 ? '数量必须是大于 0 的整数' : null;
     const parsed = {
       rawCustomer: customer?.name || customerName, customer, rawName: productName,
+      ...(customer?.id && customerName !== customer.name ? { originalCustomer: customerName } : {}),
       quantity: Number.isFinite(quantity) ? quantity : null, unit: unit || null,
       lineIndex: index + offset, rawLine: row.join(' | '), error
     };

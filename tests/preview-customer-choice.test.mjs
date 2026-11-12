@@ -12,10 +12,44 @@ const entry = (rawCustomer, customer = null) => ({
 });
 const rowChoices = (h, container) => [...h.byId(container).querySelectorAll('.ep-customer-choice')];
 function selectCustomer(h, select, id) {
-  select.focus();
-  select.value = id;
-  select.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+  select.closest('tr').querySelector('.ep-customer-picker').click();
+  h.byId('entryCustomerResults').querySelector(`[data-customer-id="${id}"]`).click();
 }
+
+test('a large roster can be searched from a preview row, cancelled or picked by phone without changing the order text', async t => {
+  const h = await harness();
+  t.after(h.close);
+  const roster = Array.from({length:280}, (_,i) => ({id:'base-' + i,name:'示例商铺' + i}));
+  roster.push({id:'west',name:'叶家店',aliases:['青禾铺'],phone:'13000005678'},
+    {id:'east',name:'叶家店',phone:'13000001888'});
+  h.state.customers = roster;
+  h.win.initEntryPreviewGuards();
+  h.win.renderParsePreview('outboundParsePreview',[entry('群昵称',roster[0]),entry('群昵称')],[product]);
+  const [current,sibling] = rowChoices(h,'outboundParsePreview');
+  const trigger = current.closest('tr').querySelector('.ep-customer-picker');
+  const results = h.byId('entryCustomerResults');
+  const search = h.byId('entryCustomerSearch');
+  const query = text => {
+    search.value = text;
+    search.dispatchEvent(new h.win.Event('input', {bubbles:true}));
+  };
+  trigger.click();
+  assert.equal(h.win.document.activeElement,search);
+  assert.ok(current.hidden);
+  assert.equal(results.querySelectorAll('[data-customer-id]').length,20);
+  query('青禾铺');assert.equal(results.querySelector('strong').textContent,'叶家店');
+  query('叶家店');assert.equal(results.querySelectorAll('[data-customer-id]').length,2);
+  assert.match(results.textContent,/5678/);assert.match(results.textContent,/1888/);
+  query('未收录的完全陌生商铺');assert.equal(results.querySelector('[data-customer-id]'),null);
+  h.byId('entryCustomerClear').click();assert.equal(search.value,'');
+  h.byId('entryCustomerClose').click();
+  assert.deepEqual([current.value,sibling.value], ['base-0','']);
+  trigger.click();query('1888');
+  results.querySelector('[data-customer-id="east"]').click();
+  assert.deepEqual([current.value,sibling.value], ['east','east']);
+  assert.equal(current.closest('tr').querySelector('.ep-customer').value,'群昵称');
+  assert.ok(!h.byId('entryCustomerPicker').open);
+});
 
 test('quick preview suggests similar names without auto-selecting; one decision fills only matching unselected rows', async t => {
   const h = await harness();
@@ -27,8 +61,10 @@ test('quick preview suggests similar names without auto-selecting; one decision 
   const choices = rowChoices(h,container);
   assert.deepEqual(choices.map(c => c.value), ['', '', 'b', '', '']);
   assert.equal(h.win.collectEditablePreview(container), null);
-  assert.equal(choices[0].querySelector('optgroup')?.querySelector('option').value, 'a');
-  assert.equal(choices[0].options.length, customers.length + 1);
+  choices[0].closest('tr').querySelector('.ep-customer-picker').click();
+  assert.equal(h.byId('entryCustomerResults').querySelector('button').dataset.customerId, 'a');
+  assert.equal(h.byId('entryCustomerResults').querySelectorAll('[data-customer-id]').length, customers.length);
+  h.byId('entryCustomerClose').click();
   selectCustomer(h, choices[0], 'a');
   assert.deepEqual(choices.map(c => c.value), ['a','a','b','','']);
   assert.equal(h.win.collectEditablePreview(container), null);
@@ -150,10 +186,11 @@ test('pending cards cannot shadow the real customer in pasted orders or Excel; t
     const [resolved, missing] = rowChoices(h, preview);
     assert.equal(resolved.value, 'a');
     assert.equal(missing.value, '');
-    missing.focus();
-    const offered = [...missing.options].map(o => o.value);
+    missing.closest('tr').querySelector('.ep-customer-picker').click();
+    const offered = [...h.byId('entryCustomerResults').querySelectorAll('[data-customer-id]')].map(o => o.dataset.customerId);
     assert.ok(offered.includes('a'));
     assert.ok(!offered.includes(pending.id) && !offered.includes(unmatched.id));
+    h.byId('entryCustomerClose').click();
   }
   await h.win.handleOutboundQuickSubmit();
   await h.win.handleInboundExcelSubmit();

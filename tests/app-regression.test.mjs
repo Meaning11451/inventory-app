@@ -11,6 +11,28 @@ test('customer Excel skips a heading row and duplicates in the same import', asy
  await h.win.handleCustomerExcelSubmit();
  assert.deepEqual(h.customers.map(c=>c.name),['张三']);
 });
+
+test('a new customer is named before creation; cancelling preserves the form or import', async t=>{
+ const h=await harness();t.after(h.close);
+ const messages=[];
+ h.win.confirm=message=>{messages.push(message);return false;};
+ h.win.showCustomerModal();
+ h.byId('customerModalName').value='晴川小铺';
+ await h.win.handleCustomerSave();
+ assert.equal(h.customers.length,0);
+ assert.equal(h.byId('customerModalName').value,'晴川小铺');
+ assert.match(messages[0],/晴川小铺/);
+ h.customers.push({id:'known',name:'云桥商行',aliases:['云桥老店']});
+ h.byId('customerQuickText').value='云桥老店\n晴川小铺';
+ await h.win.handleCustomerQuickParse();
+ await h.win.handleCustomerQuickSubmit();
+ assert.deepEqual(h.customers.map(c=>c.id),['known']);
+ assert.match(messages[1],/1 位客户.*\n晴川小铺/);
+ assert.equal(h.byId('customerQuickText').value,'云桥老店\n晴川小铺');
+ h.win.confirm=()=>true;
+ await h.win.handleCustomerQuickSubmit();
+ assert.deepEqual(h.customers.map(c=>c.name),['云桥商行','晴川小铺']);
+});
 test('editing customer source invalidates its old preview', async t=>{
  const h=await harness();t.after(h.close);h.win.bindEvents();
  h.byId('customerQuickText').value='张三';await h.win.handleCustomerQuickParse();

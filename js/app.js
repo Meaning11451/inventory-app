@@ -4,11 +4,11 @@
 
 import state, { getState, setState } from './store.js';
 import * as DB from './supabase.js?v=24';
-import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, suggestedCustomers, searchProducts } from './parser.js?v=25';
+import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers, suggestedCustomers, searchProducts } from './parser.js?v=26';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
 import { isOpeningRecord } from './opening-stock.js';
-import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js';
+import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js?v=26';
 import { createSaveIntents } from './save-intent.js?v=23';
 import { initBackup } from './backup.js';
 import { createWorkspaceStore } from './workspace.js?v=23';
@@ -110,6 +110,7 @@ function captureWorkspaceDraft(sourceId, previewId) {
           unit: option.dataset.unit || '件', spec: option.dataset.spec || '' } : null,
         rawName: resolved?.[Number(row.dataset.idx)]?.parsed?.rawName || '',
         customer, customerChoice: choice?.value ? { id: choice.value, name: choice.selectedOptions[0]?.dataset.name || '' } : null,
+        originalCustomer: row.dataset.originalCustomer || '',
         requiresCustomerChoice: row.dataset.customerNeedsChoice === 'true',
         quantity: row.querySelector('.ep-qty').value,
         unit: row.querySelector('.ep-unit').value,
@@ -144,7 +145,7 @@ function restoreWorkspace() {
     if (sourceId.endsWith('QuickText') && typeof draft.text === 'string') source.value = draft.text;
     if (!Array.isArray(draft.rows)) continue;
     const resolved = draft.rows.filter(row=>row && typeof row === 'object').map(row=>({
-      parsed: { rawCustomer: String(row.customer || ''), rawName: String(row.rawName || ''),
+      parsed: { rawCustomer: String(row.customer || ''), originalCustomer: String(row.originalCustomer || ''), rawName: String(row.rawName || ''),
         quantity: String(row.quantity ?? ''), unit: String(row.unit || ''),
         customer: typeof row.customerChoice?.id === 'string'
           ? { id: row.customerChoice.id, name: String(row.customerChoice.name || ''), entry_match_pending: row.customerChoice.entry_match_pending === true, _phone:String(row.phone || '') }
@@ -785,8 +786,9 @@ function collectEditablePreview(containerId) {
     if (rawCustomer !== row.dataset.customerLookup) syncPreviewCustomer(row);
     if (!choice.value && (rawCustomer || row.dataset.customerNeedsChoice === 'true')) {
       row.classList.add('row-error');
-      choice.focus();
-      choice.setAttribute('aria-invalid', 'true');
+      const picker = row.querySelector('.ep-customer-picker');
+      picker.focus();
+      picker.setAttribute('aria-invalid', 'true');
       showToast(`第 ${index + 1} 行${rawCustomer ? '「' + rawCustomer + '」' : ''}请选择已有客户；新客户请先在客户页添加`, 'warning');
       return null;
     }
@@ -796,6 +798,7 @@ function collectEditablePreview(containerId) {
 }
 
 function initEntryPreviewGuards() {
+  initEntryCustomerPicker();
   for (const direction of ['inbound', 'outbound']) {
     document.getElementById(`${direction}QuickText`).addEventListener('input', () => {
       delete document.getElementById(`${direction}QuickText`).dataset.resolved;
@@ -804,34 +807,15 @@ function initEntryPreviewGuards() {
     });
     for (const previewId of [`${direction}ParsePreview`, `${direction}ExcelPreview`]) {
       const preview = document.getElementById(previewId);
-      const expandChoices = event => {
-        const choice = event.target;
-        if (choice.matches('.ep-customer-choice') && !choice.dataset.expanded) {
-          syncPreviewCustomer(choice.closest('tr'), { expand: true });
-        }
-      };
-      preview.addEventListener('focusin', expandChoices);
-      preview.addEventListener('pointerdown', expandChoices);
+      preview.addEventListener('click', event => {
+        const button = event.target.closest('.ep-customer-picker');
+        if (button) openEntryCustomerPicker(button.closest('tr'));
+      });
       const onEdit = event => {
         event.target.removeAttribute('aria-invalid');
         const row = event.target.closest('tr');
         if (!row) return;
         if (event.target.matches('.ep-customer')) syncPreviewCustomer(row);
-        if (event.type === 'change' && event.target.matches('.ep-customer-choice')) {
-          const id = event.target.value;
-          const raw = row.querySelector('.ep-customer').value.trim();
-          row.dataset.customerNeedsChoice = String(!id && Boolean(raw));
-          syncPreviewCustomer(row, { expand: true });
-          if (id && raw) {
-            const customer = { id, name: event.target.selectedOptions[0].dataset.name };
-            for (const other of preview.querySelectorAll('tbody tr')) {
-              if (other !== row && !other.querySelector('.ep-customer-choice').value && other.querySelector('.ep-customer').value.trim() === raw) {
-                syncPreviewCustomer(other, { trusted: customer });
-                updateEntryPreviewRow(other);
-              }
-            }
-          }
-        }
         updateEntryPreviewRow(row, event.target.matches('.ep-product'));
       };
       preview.addEventListener('input', onEdit);
@@ -1083,21 +1067,48 @@ async function renderRecords() {
 
 // ==================== 👥 客户 ====================
 
+function directoryResults(search, customers) {
+  if (!search) return customers.map(customer => ({ customer }));
+  const key = value => String(value || '').normalize('NFKC').toLowerCase().trim();
+  const query = key(search);
+  const recognized = new Set(matchingCustomers(search, customers));
+  const exactNames = [], recognizedNames = [], partial = [];
+  for (const customer of customers) {
+    const name = key(customer.name);
+    const aliases = Array.isArray(customer.aliases) ? customer.aliases : [];
+    const alias = aliases.find(value => key(value) === query) || aliases.find(value => key(value).includes(query));
+    const row = { customer, detail: alias && !name.includes(query) ? `别名 · ${alias}` : '' };
+    if (name === query) exactNames.push(row);
+    else if (recognized.has(customer) || (alias && key(alias) === query)) recognizedNames.push(row);
+    else if (name.includes(query) || alias || key(customer.phone).includes(query)) partial.push(row);
+  }
+  const results = [...exactNames, ...recognizedNames, ...partial];
+  const visible = new Set(results.map(row => row.customer));
+  for (const customer of suggestedCustomers(search, customers)) {
+    if (!visible.has(customer)) results.push({ customer, detail: '可能匹配' });
+  }
+  return results;
+}
+
+let customerRenderVersion = 0;
 async function renderCustomers() {
-  const search = document.getElementById('customerSearch')?.value || '';
-  const customers = (await loadCustomers(true)).filter(c =>
-    !search || c.name.includes(search) || (c.phone && c.phone.includes(search))
-  );
+  const version = ++customerRenderVersion;
+  const input = document.getElementById('customerSearch');
+  const search = input.value.trim();
+  const customers = await loadCustomers(true);
+  if (version !== customerRenderVersion || search !== input.value.trim()) return;
+  const results = directoryResults(search, customers);
   const container = document.getElementById('customerList');
-  if (customers.length === 0) {
+  if (results.length === 0) {
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><p>${search ? '没有匹配的客户' : '还没有客户，点右上角＋添加'}</p></div>`;
     return;
   }
-  container.innerHTML = customers.map(c => `
+  container.innerHTML = results.map(({ customer: c, detail }) => `
     <div class="card stock-card">
       <div class="stock-card-emoji"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#icon-customers"></use></svg></div>
       <div class="stock-card-info">
         <div class="stock-card-name">${escapeHtml(c.name)}</div>
+        ${detail ? `<div class="stock-card-spec">${escapeHtml(detail)}</div>` : ''}
         <div class="stock-card-spec">${c.phone ? '📱 ' + escapeHtml(c.phone) : ''}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>
       </div>
       <div>
@@ -1246,9 +1257,12 @@ function parseCustomerLines(text) {
 function renderCustomerImport(inputId, previewId, buttonId, parsed, existing) {
   const resolved = planCustomerImport(parsed, existing);
   const input = document.getElementById(inputId);
-  input.dataset.resolved = JSON.stringify(parsed);
+  const newCustomers = resolved.filter(row => !row.exists);
+  input.dataset.resolved = JSON.stringify(resolved);
   document.getElementById(previewId).innerHTML = `<div class="parse-preview"><table><thead><tr><th>客户名</th><th>电话</th><th>备注</th><th>状态</th></tr></thead><tbody>${resolved.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.phone)}</td><td>${escapeHtml(row.note)}</td><td>${row.exists ? '已存在或本批重复，跳过' : '待新增'}</td></tr>`).join('')}</tbody></table></div>`;
-  document.getElementById(buttonId).style.display = resolved.some(row=>!row.exists) ? 'block' : 'none';
+  const button = document.getElementById(buttonId);
+  button.textContent = `确认新增 ${newCustomers.length} 位客户`;
+  button.style.display = newCustomers.length ? 'block' : 'none';
 }
 async function handleCustomerQuickParse() {
   const text = document.getElementById('customerQuickText').value;
@@ -1262,7 +1276,12 @@ async function submitCustomers(inputId,previewId,buttonId,scopeId) {
     if (!input.dataset.resolved) return;
     const rows = JSON.parse(input.dataset.resolved);
     try {
-      const result = await saveCustomerImport(rows,DB);
+      const result = await saveCustomerImport(rows, DB, pending => {
+        const names = pending.slice(0, 8).map(row => row.name).join('、');
+        const more = pending.length > 8 ? '等，完整名单见预览' : '';
+        return confirm(`要在账本里新增 ${pending.length} 位客户吗？\n${names}${more}`);
+      });
+      if (result.cancelled) return;
       setState('customers',null);
       if (result.failed.length) {
         // Retain the complete source; fresh rechecking skips successful rows on retry.
@@ -1311,9 +1330,17 @@ async function handleCustomerSaveCore() {
   const editId = document.getElementById('customerModalOverlay').dataset.editId;
   const data = { name, phone: document.getElementById('customerModalPhone').value.trim(), note: document.getElementById('customerModalNote').value.trim() };
   try {
-    editId ? await DB.updateCustomer(editId, data) : await DB.createCustomer(data);
+    if (editId) {
+      await DB.updateCustomer(editId, data);
+    } else {
+      const customers = await loadCustomers(true);
+      const closeNames = suggestedCustomers(name, customers).slice(0, 3).map(customer => customer.name);
+      const hint = closeNames.length ? `\n账上有相近的客户：${closeNames.join('、')}。如果是同一位，请取消。` : '';
+      if (!confirm(`要在账本里新增客户「${name}」吗？${hint}`)) return;
+      await DB.createCustomer(data);
+    }
     setState('customers',null);
-    showToast(editId ? '已更新' : '已添加', 'success');
+    showToast(editId ? '已更新' : `已新增客户「${name}」`, 'success');
     closeCustomerModal();
     await renderCustomers();
     await renderDashboard();
@@ -1324,8 +1351,112 @@ async function handleCustomerSaveCore() {
 
 // ==================== 解析预览 ====================
 
+let pickerRow = null;
+let pickerLimit = 20;
+
+function closeEntryCustomerPicker() {
+  const dialog = document.getElementById('entryCustomerPicker');
+  if (dialog.open && typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+  const button = pickerRow?.querySelector('.ep-customer-picker');
+  pickerRow = null;
+  if (button?.isConnected) button.focus({ preventScroll: true });
+}
+
+function openEntryCustomerPicker(row) {
+  pickerRow = row;
+  pickerLimit = 20;
+  const search = document.getElementById('entryCustomerSearch');
+  search.value = '';
+  const original = row.dataset.originalCustomer || row.querySelector('.ep-customer').value.trim();
+  const caption = document.getElementById('entryCustomerOriginal');
+  caption.textContent = original ? '原文 · ' + original : '';
+  caption.hidden = !original;
+  const dialog = document.getElementById('entryCustomerPicker');
+  renderEntryCustomerOptions();
+  if (!dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  search.focus();
+}
+
+function renderEntryCustomerOptions() {
+  if (!pickerRow?.isConnected) {
+    if (pickerRow) closeEntryCustomerPicker();
+    return;
+  }
+  const search = document.getElementById('entryCustomerSearch').value.trim();
+  const catalog = (getState('customers') || []).filter(isEntryCustomer);
+  const selectedId = pickerRow.querySelector('.ep-customer-choice').value;
+  document.getElementById('entryCustomerClear').hidden = !search;
+  document.getElementById('entryCustomerUnset').hidden = !selectedId;
+  let results;
+  if (search) {
+    results = directoryResults(search, catalog);
+  } else {
+    const recommended = suggestedCustomers(pickerRow.querySelector('.ep-customer').value, catalog).slice(0, 6);
+    const first = new Set(recommended);
+    results = [
+      ...recommended.map(customer => ({ customer, detail: '推荐' })),
+      ...catalog.filter(customer => !first.has(customer)).map(customer => ({ customer }))
+    ];
+  }
+  const counts = new Map();
+  for (const customer of catalog) counts.set(customer.name, (counts.get(customer.name) || 0) + 1);
+  const options = results.slice(0, pickerLimit).map(({ customer, detail }) => {
+    const sameName = counts.get(customer.name) > 1;
+    const info = [customer.id === selectedId ? '已选' : detail, customer.phone, sameName && customer.note,
+      sameName && '#' + String(customer.id).slice(-6)].filter(Boolean).join(' · ');
+    return `<button type="button" class="entry-customer-option" data-customer-id="${escapeHtml(customer.id)}">
+      <strong>${escapeHtml(customer.name)}</strong>${info ? `<small>${escapeHtml(info)}</small>` : ''}</button>`;
+  });
+  if (results.length > pickerLimit) options.push('<button type="button" class="btn btn-outline" data-more>显示更多客户</button>');
+  const empty = search ? '没有找到客户，可以换个名字或电话号码试试。' : '暂无可选客户，请检查客户名单。';
+  document.getElementById('entryCustomerResults').innerHTML = options.join('') || `<p class="form-hint" role="status">${empty}</p>`;
+}
+
+function chooseEntryCustomer(customer) {
+  if (!pickerRow?.isConnected) { closeEntryCustomerPicker(); return; }
+  const row = pickerRow;
+  const raw = row.querySelector('.ep-customer').value.trim();
+  if (!customer) row.querySelector('.ep-customer-choice').value = '';
+  row.dataset.customerNeedsChoice = String(!customer && Boolean(raw));
+  syncPreviewCustomer(row, { trusted: customer });
+  updateEntryPreviewRow(row);
+  if (customer && raw) {
+    for (const other of row.parentElement.rows) {
+      if (other !== row && !other.querySelector('.ep-customer-choice').value && other.querySelector('.ep-customer').value.trim() === raw) {
+        syncPreviewCustomer(other, { trusted: customer });
+        updateEntryPreviewRow(other);
+      }
+    }
+  }
+  persistWorkspace();
+  closeEntryCustomerPicker();
+}
+
+function initEntryCustomerPicker() {
+  const dialog = document.getElementById('entryCustomerPicker');
+  const search = document.getElementById('entryCustomerSearch');
+  document.getElementById('entryCustomerClose').addEventListener('click', closeEntryCustomerPicker);
+  dialog.addEventListener('cancel', event => { event.preventDefault(); closeEntryCustomerPicker(); });
+  dialog.addEventListener('click', event => { if (event.target === dialog) closeEntryCustomerPicker(); });
+  search.addEventListener('input', () => { pickerLimit = 20; renderEntryCustomerOptions(); });
+  document.getElementById('entryCustomerClear').addEventListener('click', () => {
+    search.value = ''; pickerLimit = 20; renderEntryCustomerOptions(); search.focus();
+  });
+  document.getElementById('entryCustomerUnset').addEventListener('click', () => chooseEntryCustomer(null));
+  document.getElementById('entryCustomerResults').addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.hasAttribute('data-more')) { pickerLimit += 20; renderEntryCustomerOptions(); return; }
+    const customer = (getState('customers') || []).find(c => c.id === button.dataset.customerId && isEntryCustomer(c));
+    if (customer) chooseEntryCustomer(customer);
+    else renderEntryCustomerOptions();
+  });
+}
+
 // Keep the typed label separate from the customer ID the user will actually book to.
-function syncPreviewCustomer(row, { catalog = getState('customers')?.filter(isEntryCustomer), trusted, expand = false } = {}) {
+function syncPreviewCustomer(row, { catalog = getState('customers')?.filter(isEntryCustomer), trusted } = {}) {
   const input = row.querySelector('.ep-customer');
   const choice = row.querySelector('.ep-customer-choice');
   const raw = input.value.trim();
@@ -1342,27 +1473,14 @@ function syncPreviewCustomer(row, { catalog = getState('customers')?.filter(isEn
   }
   row.dataset.customerLookup = raw;
   const unresolved = !customer && Boolean(raw || row.dataset.customerNeedsChoice === 'true');
-  const option = (c, label = c.name) => `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}"${String(c.id) === String(customer?.id) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-  const options = [`<option value="">${unresolved ? '请选择已有客户' : raw ? '重选／修改客户' : '无客户（可选择）'}</option>`];
-  if (expand) {
-    const all = [...(catalog || (customer ? [customer] : []))].sort((a,b) => a.name.localeCompare(b.name, 'zh-CN'));
-    const counts = new Map();
-    for (const c of all) counts.set(c.name, (counts.get(c.name) || 0) + 1);
-    const label = c => counts.get(c.name) > 1 ? `${c.name} · ${[c.phone, c.note, '#' + String(c.id).slice(-6)].filter(Boolean).join(' · ')}` : c.name;
-    const recommended = raw ? suggestedCustomers(raw, all).slice(0, 6) : [];
-    const ids = new Set(recommended.map(c => c.id));
-    const group = (name, items) => items.length ? `<optgroup label="${name}">${items.map(c => option(c, label(c))).join('')}</optgroup>` : '';
-    options.push(group('可能是这些客户', recommended), group('其他已有客户', all.filter(c => !ids.has(c.id))));
-    choice.dataset.expanded = 'true';
-  } else {
-    if (customer) options.push(option(customer));
-    delete choice.dataset.expanded;
-  }
-  choice.innerHTML = options.join('');
-  choice.removeAttribute('aria-invalid');
+  choice.innerHTML = customer ? `<option selected value="${escapeHtml(customer.id)}" data-name="${escapeHtml(customer.name)}">${escapeHtml(customer.name)}</option>` : '<option value=""></option>';
+  const button = row.querySelector('.ep-customer-picker');
+  button.textContent = customer?.name || (unresolved ? '请选择客户' : '选择客户（可选）');
+  button.removeAttribute('aria-invalid');
   input.hidden = !unresolved && document.activeElement !== input;
   const source = row.querySelector('.ep-customer-source');
-  source.textContent = customer && raw && customer.name !== raw ? '原文：' + raw : '';
+  const original = row.dataset.originalCustomer || raw;
+  source.textContent = customer && original && customer.name !== original ? '原文：' + original : '';
   source.hidden = !source.textContent;
 }
 
@@ -1371,10 +1489,11 @@ function refreshPreviewCustomers(customers) {
   for (const [, previewId] of batchDrafts) {
     for (const choice of document.getElementById(previewId).querySelectorAll('.ep-customer-choice')) {
       const row = choice.closest('tr');
-      syncPreviewCustomer(row, { catalog, expand: document.activeElement === choice });
+      syncPreviewCustomer(row, { catalog });
       updateEntryPreviewRow(row);
     }
   }
+  if (pickerRow) renderEntryCustomerOptions();
   persistWorkspace();
 }
 
@@ -1436,8 +1555,8 @@ function renderParsePreview(containerId, resolved, catalog = getState('products'
         const status = parsed.error ? ['需更正', 'danger', 'row-error'] : !item.product ? ['请选择商品', 'warning', 'row-new'] : ['已匹配', 'success', 'row-matched'];
         const options = previewProductOptions(products,item.product?.id);
         const original = !item.product || item.product.name !== parsed.rawName ? `<small class="ep-source">原文：${escapeHtml(parsed.rawName)}</small>` : '';
-        return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
-          <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户原文" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户原文（可选）"><select class="ep-input ep-customer-choice" aria-label="第 ${index + 1} 行选择已有客户"></select><small class="ep-source ep-customer-source" hidden></small></td>
+        return `<tr class="${status[2]}" data-idx="${index}" data-customer="${escapeHtml(parsed.rawCustomer)}" data-original-customer="${escapeHtml(parsed.originalCustomer || '')}" data-phone="${escapeHtml(parsed.customer?._phone || '')}">
+          <td><input class="ep-input ep-customer" aria-label="第 ${index + 1} 行客户原文" value="${escapeHtml(parsed.rawCustomer)}" placeholder="客户原文（可选）"><button type="button" class="ep-input ep-customer-picker" aria-haspopup="dialog" aria-controls="entryCustomerPicker"></button><select class="ep-customer-choice" hidden></select><small class="ep-source ep-customer-source" hidden></small></td>
           <td><select class="ep-input ep-name ep-product" aria-label="第 ${index + 1} 行商品">${options}</select>${original}</td>
           <td><input class="ep-input ep-qty" aria-label="第 ${index + 1} 行数量" type="number" value="${parsed.quantity ?? ''}" step="1" inputmode="numeric" min="1"></td>
           <td><input class="ep-input ep-unit" aria-label="第 ${index + 1} 行单位" value="${escapeHtml(parsed.unit || item.suggestedUnit || '件')}"></td>

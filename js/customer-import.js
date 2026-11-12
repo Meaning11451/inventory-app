@@ -12,18 +12,20 @@ export function parseCustomerExcel(rows) {
   return rows.slice(header + 1).filter(row => row.some(cell => String(cell ?? '').trim())).map(row => Object.fromEntries(Object.entries(columns).map(([field,col]) => [field,col < 0 ? '' : String(row[col] ?? '').trim()]))).filter(row => row.name && !aliases.name.includes(row.name));
 }
 export function planCustomerImport(rows, existing = []) {
-  const seen = new Set(existing.map(row => key(row.name)));
+  const seen = new Set(existing.flatMap(row => [row.name, ...(Array.isArray(row.aliases) ? row.aliases : [])]).map(key));
   return rows.map(row => {
     const name = row.name.trim();
     const identity = key(name);
-    const exists = seen.has(identity);
+    const exists = row.exists === true || seen.has(identity);
     seen.add(identity);
     return {...row,name,exists};
   });
 }
-export async function saveCustomerImport(rows, api) {
+export async function saveCustomerImport(rows, api, approveNew) {
   const existing = await api.fetchCustomers();
   const plan = planCustomerImport(rows, existing);
+  const pending = plan.filter(row => !row.exists);
+  if (pending.length && approveNew && !approveNew(pending)) return {cancelled:true};
   const failed = [];
   let saved = 0;
   for (const row of plan) {
