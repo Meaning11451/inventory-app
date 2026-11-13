@@ -1,5 +1,5 @@
 // Synthetic browser-test database. Production imports js/supabase.js instead.
-import { OPENING_NOTE } from '../../js/opening-stock.js';
+import { OPENING_NOTE, isValidBusinessDate } from '../../js/opening-stock.js';
 const date = new Date().toLocaleDateString('en-CA');
 const products = [
   { id: 'plain', name: '后腿卷', unit: '件', spec: '' },
@@ -56,15 +56,16 @@ export async function deleteCustomer(id) { const index=customers.findIndex(row=>
 export async function deleteInboundRecord(id) { const index=inbound.findIndex(row=>row.id===id);if(index>=0)inbound.splice(index,1);updateCounter(); }
 export async function deleteOutboundRecord(id) { const index=outbound.findIndex(row=>row.id===id);if(index>=0)outbound.splice(index,1);updateCounter(); }
 
-export async function updateLedgerRecord(direction, original, { product_id, customer_id, customer_name, quantity }) {
+export async function updateLedgerRecord(direction, original, { product_id, customer_id, customer_name, quantity, recorded_at = original.recorded_at }) {
   const table = direction === 'inbound' ? inbound : outbound;
   if (!['inbound','outbound'].includes(direction) || original.note === OPENING_NOTE || original.note?.startsWith('🔧')) throw new Error('请选择普通进出库记录');
   if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 9999999999) throw new Error('数量必须为大于 0 的整数');
+  if (!isValidBusinessDate(recorded_at)) throw new Error('请选择有效的业务日期');
   if (!products.some(p => p.id === product_id) || (customer_id && !customers.some(c => c.id === customer_id))) throw new Error('商品或客户已删除');
   const current = table.find(r => r.id === original.id);
-  const update = { product_id, customer_id, customer_name, quantity };
+  const update = { product_id, customer_id, customer_name, quantity, recorded_at };
   if (current && current.note === original.note && Object.entries(update).every(([field,value]) => current[field] === value)) return {...current};
-  if (!current || ['product_id','customer_id','customer_name','quantity','note','created_at'].some(field => current[field] !== original[field])) {
+  if (!current || ['product_id','customer_id','customer_name','quantity','recorded_at','note','created_at'].some(field => current[field] !== original[field])) {
     throw Object.assign(new Error('记录已被修改或删除，请重新核对'), {code:'RECORD_CHANGED'});
   }
   state.attempts++;

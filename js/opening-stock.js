@@ -120,13 +120,14 @@ export async function loadOpeningPlan(rows, api) {
   return checkOpeningRecords(plan, records);
 }
 
-function validateDate(date) {
+export function isValidBusinessDate(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date.startsWith('0000-')) return false;
   const parsed = new Date(`${date}T00:00:00Z`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new Error('请选择有效的结转日期');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 }
 
 export async function importOpeningStock(rows, date, options) {
-  validateDate(date);
+  if (!isValidBusinessDate(date)) throw new Error('请选择有效的结转日期');
   const { api, allowNegative = false, onProgress = () => {} } = options;
   const plan = await loadOpeningPlan(rows, api);
   const invalid = plan.find(item => item.errors.length);

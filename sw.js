@@ -2,7 +2,7 @@
 // Service Worker v8 - JS/CSS Network-First
 // ============================================
 
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 const CACHE_NAME = `inventory-${APP_VERSION}`;
 
 // ==================== Install ====================

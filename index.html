@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/app-icon-180.png?v=18">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png?v=14">
   <title>三胜达进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=27">
+  <link rel="stylesheet" href="./css/style.css?v=28">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -174,8 +174,11 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">日期</label>
-              <input type="date" id="inboundDate" class="form-input" required>
+              <label class="form-label" for="inboundDate">入库日期</label>
+              <div class="business-date-row">
+                <input id="inboundDate" class="form-input" type="date" required>
+                <button type="button" class="btn btn-outline" data-yesterday-for="inboundDate">昨天</button>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">备注</label>
@@ -189,6 +192,13 @@
       <!-- 快捷 -->
       <div id="inboundQuickMode" style="display:none;">
         <div class="form-group">
+          <label class="form-label" for="inboundQuickDate">整批入库日期</label>
+          <div class="business-date-row">
+            <input id="inboundQuickDate" class="form-input" type="date" required>
+            <button type="button" class="btn btn-outline" data-yesterday-for="inboundQuickDate">昨天</button>
+          </div>
+        </div>
+        <div class="form-group">
           <label class="form-label">粘贴客户和商品清单</label>
           <textarea id="inboundQuickText" class="form-textarea" placeholder="小寨，田志强&#10;后腿卷 15件&#10;&#10;济南，武&#10;合胜源后腿卷 20件&#10;合胜源一号 5件&#10;合胜源后腿砖 5件&#10;三胜达后腿卷 10件"></textarea>
         </div>
@@ -200,6 +210,13 @@
 
       <!-- Excel -->
       <div id="inboundExcelMode" style="display:none;">
+        <div class="form-group">
+          <label class="form-label" for="inboundExcelDate">整批入库日期</label>
+          <div class="business-date-row">
+            <input id="inboundExcelDate" class="form-input" type="date" required>
+            <button type="button" class="btn btn-outline" data-yesterday-for="inboundExcelDate">昨天</button>
+          </div>
+        </div>
         <div class="form-group">
           <label class="form-label">选择 Excel 文件</label>
           <input type="file" id="inboundExcelFile" class="form-input" accept=".xlsx,.xls">
@@ -419,6 +436,13 @@
       <h3 id="recordEditTitle">编辑记录</h3>
       <p id="recordEditOriginal" class="form-hint"></p>
       <div class="form-group">
+        <label class="form-label" for="recordEditDate">业务日期</label>
+        <div class="business-date-row">
+          <input id="recordEditDate" class="form-input" type="date" required>
+          <button type="button" id="recordEditYesterday" class="btn btn-outline">昨天</button>
+        </div>
+      </div>
+      <div class="form-group">
         <label class="form-label" for="recordEditProduct">商品</label>
         <select id="recordEditProduct" class="form-select" required></select>
       </div>
@@ -471,6 +495,13 @@
   <div id="quickInModalOverlay" class="modal-overlay" style="display:none;">
     <div class="modal-sheet">
       <h3 id="quickInTitle">快捷入库</h3>
+      <div class="form-group">
+        <label class="form-label" for="quickInDate">入库日期</label>
+        <div class="business-date-row">
+          <input id="quickInDate" class="form-input" type="date" required>
+          <button type="button" class="btn btn-outline" data-yesterday-for="quickInDate">昨天</button>
+        </div>
+      </div>
       <div class="form-group"><label class="form-label">数量</label><input type="number" id="quickInQty" class="form-input" placeholder="数量" step="1" inputmode="numeric" min="1"></div>
       <div class="form-group"><label class="form-label">客户</label><select id="quickInCustomer" class="form-select"></select></div>
       <div class="modal-actions">
@@ -498,6 +529,6 @@
   <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=27"></script>
+  <script type="module" src="./js/app.js?v=28"></script>
 </body>
 </html>

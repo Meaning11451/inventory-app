@@ -2,7 +2,7 @@
 // supabase.js - 数据层：Supabase 客户端 + 所有 CRUD
 // ============================================
 
-import { OPENING_NOTE } from './opening-stock.js';
+import { OPENING_NOTE, isValidBusinessDate } from './opening-stock.js?v=28';
 
 // TODO: 替换为你的 Supabase 项目 URL 和 anon key
 // 在 Supabase 项目 Settings > API 中可以找到
@@ -264,7 +264,8 @@ function sameLedgerFields(row, target) {
   return row.product_id === target.product_id &&
     (row.customer_id ?? null) === target.customer_id &&
     (row.customer_name ?? null) === target.customer_name &&
-    Number(row.quantity) === target.quantity;
+    Number(row.quantity) === target.quantity &&
+    (target.recorded_at === undefined || row.recorded_at === target.recorded_at);
 }
 
 export async function updateLedgerRecord(direction, original, changes) {
@@ -290,6 +291,11 @@ export async function updateLedgerRecord(direction, original, changes) {
   }
 
   const update = { product_id, customer_id, customer_name, quantity };
+  if (changes.recorded_at !== undefined || original.recorded_at !== undefined) {
+    if (!isValidBusinessDate(original.recorded_at)) throw new Error('原记录日期不完整，请刷新记录后重试');
+    update.recorded_at = changes.recorded_at === undefined ? original.recorded_at : changes.recorded_at;
+    if (!isValidBusinessDate(update.recorded_at)) throw new Error('请选择有效的业务日期');
+  }
   if (sameLedgerFields(original, update)) return original;
   const table = `${direction}_records`;
   let query = getClient().from(table).update(update).eq('id', original.id)
@@ -300,6 +306,7 @@ export async function updateLedgerRecord(direction, original, changes) {
     query = original[field] == null ? query.is(field, null) : query.eq(field, original[field]);
   }
   if (original.created_at) query = query.eq('created_at', original.created_at);
+  if (original.recorded_at !== undefined) query = query.eq('recorded_at', original.recorded_at);
   const { data, error } = await query.select('*');
   if (error) throw error;
   if (data?.length === 1) return data[0];

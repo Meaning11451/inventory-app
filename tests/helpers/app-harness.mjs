@@ -5,7 +5,7 @@ import * as parser from '../../js/parser.js';
 import * as customerImport from '../../js/customer-import.js';
 import { createSaveIntents } from '../../js/save-intent.js';
 import { createWorkspaceStore } from '../../js/workspace.js';
-import { isOpeningRecord } from '../../js/opening-stock.js';
+import { isOpeningRecord, isValidBusinessDate } from '../../js/opening-stock.js';
 export async function harness(overrides = {}, { savedStorage = {}, ledger } = {}) {
   const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
   const dom = new JSDOM(html, { url: 'https://inventory.test/', runScripts: 'outside-only' });
@@ -36,7 +36,7 @@ export async function harness(overrides = {}, { savedStorage = {}, ledger } = {}
     deleteOutboundRecord:async id=>outbound.splice(outbound.findIndex(r=>r.id===id),1),
     subscribeStockChanges:()=>({unsubscribe(){}}), ...overrides
   };
-  Object.assign(win,{ DB:api,getState:key=>key?state[key]:state,setState:(k,v)=>state[k]=v,...parser,...customerImport,createSaveIntents,createWorkspaceStore,isOpeningRecord,initSync(){},getPendingCount:async()=>0,initOpeningImport(){},initBackup(){},confirm:()=>true });
+  Object.assign(win,{ DB:api,getState:key=>key?state[key]:state,setState:(k,v)=>state[k]=v,...parser,...customerImport,createSaveIntents,createWorkspaceStore,isOpeningRecord,isValidBusinessDate,initSync(){},getPendingCount:async()=>0,initOpeningImport(){},initBackup(){},confirm:()=>true });
   let source = await readFile(new URL('../../js/app.js',import.meta.url),'utf8');
   source = source.replace(/^import .*;\r?$/gm,'').replace("document.addEventListener('DOMContentLoaded', () => { initApp(); });",'');
   vm.runInContext(source,dom.getInternalVMContext());

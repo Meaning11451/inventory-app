@@ -3,11 +3,11 @@
 // ============================================
 
 import state, { getState, setState } from './store.js';
-import * as DB from './supabase.js?v=27';
+import * as DB from './supabase.js?v=28';
 import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers, suggestedCustomers, searchProducts } from './parser.js?v=26';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
-import { isOpeningRecord } from './opening-stock.js';
+import { isOpeningRecord, isValidBusinessDate } from './opening-stock.js?v=28';
 import { parseCustomerExcel, planCustomerImport, saveCustomerImport } from './customer-import.js?v=26';
 import { createSaveIntents } from './save-intent.js?v=23';
 import { initBackup } from './backup.js';
@@ -19,6 +19,7 @@ const batchDrafts = [
   ['inboundExcelFile','inboundExcelPreview'], ['outboundExcelFile','outboundExcelPreview']
 ];
 const batchScopes = batchDrafts.map(([source])=>source);
+const batchDates = { inboundQuickText: 'inboundQuickDate', inboundExcelFile: 'inboundExcelDate' };
 const savedIntents = Array.isArray(recoveredWorkspace?.intents)
   ? recoveredWorkspace.intents.filter(entry=>Array.isArray(entry) && batchScopes.includes(entry[0])) : [];
 const saveIntents = createSaveIntents(savedIntents);
@@ -100,6 +101,7 @@ function captureWorkspaceDraft(sourceId, previewId) {
   const table = document.getElementById(previewId).querySelector('tbody');
   return {
     text: sourceId.endsWith('QuickText') ? source.value : '',
+    ...(batchDates[sourceId] ? {businessDate: document.getElementById(batchDates[sourceId]).value} : {}),
     rows: table ? [...table.querySelectorAll('tr')].map(row => {
       const select = row.querySelector('.ep-product');
       const option = select.selectedOptions[0];
@@ -143,6 +145,16 @@ function restoreWorkspace() {
     if (!draft || typeof draft !== 'object') continue;
     const source = document.getElementById(sourceId);
     if (sourceId.endsWith('QuickText') && typeof draft.text === 'string') source.value = draft.text;
+    if (batchDates[sourceId] && (draft.text || draft.rows?.length)) {
+      const pending = savedIntents.find(([scope]) => scope === sourceId);
+      // Drafts from versions before the date picker may already have been submitted.
+      const date = pending?.[1]?.records?.[0]?.recorded_at || draft.businessDate;
+      if (isValidBusinessDate(date)) {
+        const field = document.getElementById(batchDates[sourceId]);
+        field.value = date;
+        field.dataset.chosen = 'true';
+      }
+    }
     if (!Array.isArray(draft.rows)) continue;
     const resolved = draft.rows.filter(row=>row && typeof row === 'object').map(row=>({
       parsed: { rawCustomer: String(row.customer || ''), originalCustomer: String(row.originalCustomer || ''), rawName: String(row.rawName || ''),
@@ -171,7 +183,7 @@ function restoreWorkspace() {
 
 function initWorkspacePersistence() {
   const belongsToDraft = element => batchDrafts.some(([source,preview])=>
-    element.id === source || document.getElementById(preview).contains(element));
+    element.id === source || element.id === batchDates[source] || document.getElementById(preview).contains(element));
   for (const type of ['input','change']) {
     document.addEventListener(type, event => { if (belongsToDraft(event.target)) persistWorkspace(); });
   }
@@ -228,6 +240,16 @@ function showToast(msg, type = 'info') {
 // ==================== 事件绑定 ====================
 
 function bindEvents() {
+  for (const button of document.querySelectorAll('[data-yesterday-for]')) {
+    const field = document.getElementById(button.dataset.yesterdayFor);
+    for (const type of ['input','change']) {
+      field.addEventListener(type, () => { field.dataset.chosen = 'true'; });
+    }
+    button.addEventListener('click', () => {
+      field.value = yesterday();
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
   // 搜索
   document.getElementById('stockSearch').addEventListener('input', debounce(renderStock, 300));
   document.getElementById('customerSearch').addEventListener('input', debounce(renderCustomers, 300));
@@ -341,6 +363,8 @@ function bindEvents() {
 }
 
 function switchInboundMode(mode) {
+  if (mode === 'quick') defaultReceiptDate('inboundQuickDate');
+  if (mode === 'excel') defaultReceiptDate('inboundExcelDate');
   document.getElementById('inboundFormMode').style.display = mode === 'form' ? 'block' : 'none';
   document.getElementById('inboundQuickMode').style.display = mode === 'quick' ? 'block' : 'none';
   document.getElementById('inboundExcelMode').style.display = mode === 'excel' ? 'block' : 'none';
@@ -570,6 +594,7 @@ async function renderStock() {
 // ==================== 快捷入库弹窗 ====================
 
 async function openQuickInModal(productId, productName, unit) {
+  defaultReceiptDate('quickInDate', true);
   document.getElementById('quickInTitle').textContent = `📥 快捷入库 - ${productName}`;
   document.getElementById('quickInQty').value = '';
   document.getElementById('quickInModalOverlay').dataset.productId = productId;
@@ -586,7 +611,7 @@ async function handleQuickInCore() {
   if (!validDailyQuantity(qty)) { showToast('请输入大于 0 的整数数量', 'warning'); return; }
   const customerId = document.getElementById('quickInCustomer').value || null;
   try {
-    await saveDailyRecord('quickInModalOverlay','createInbound',{ product_id: productId, customer_id: customerId, quantity: qty, recorded_at: today() });
+    await saveDailyRecord('quickInModalOverlay','createInbound',{ product_id: productId, customer_id: customerId, quantity: qty, recorded_at: receiptDate('quickInDate') });
     showToast('入库成功 ✅', 'success');
     document.getElementById('quickInModalOverlay').style.display = 'none';
     await renderStock();
@@ -624,6 +649,7 @@ async function handleQuickOutCore() {
 // ==================== 📥 入库 ====================
 
 async function renderInboundForm() {
+  for (const id of ['inboundDate', ...Object.values(batchDates)]) defaultReceiptDate(id);
   const previousProduct = document.getElementById('inboundProduct').value;
   const previousCustomer = document.getElementById('inboundCustomer').value;
   const [products, customers] = await Promise.all([loadProducts(), loadEntryCustomers()]);
@@ -635,7 +661,6 @@ async function renderInboundForm() {
     customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)} ${c.phone ? '📱' + escapeHtml(c.phone) : ''}</option>`).join('');
   document.getElementById('inboundProduct').value = previousProduct;
   restoreFormCustomer(cSel, previousCustomer);
-  if (!document.getElementById('inboundDate').value) document.getElementById('inboundDate').value = today();
 }
 
 async function handleInboundSubmitCore(e) {
@@ -650,11 +675,11 @@ async function handleInboundSubmitCore(e) {
       product_id, customer_id, quantity: qty,
       unit_price: null,
       note: document.getElementById('inboundNote').value.trim(),
-      recorded_at: document.getElementById('inboundDate').value
+      recorded_at: receiptDate('inboundDate')
     });
     showToast('入库成功 ✅', 'success');
     document.getElementById('inboundForm').reset();
-    document.getElementById('inboundDate').value = today();
+    defaultReceiptDate('inboundDate', true);
     await renderInboundForm();
     await renderDashboard();
   } catch (err) { showToast('入库失败: ' + err.message, 'error'); }
@@ -903,6 +928,8 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
   button.disabled = true;
   button.textContent = '正在保存…';
   try {
+    const dateField = batchDates[inputId];
+    const businessDate = dateField ? receiptDate(dateField) : today();
     const [products, customers] = await Promise.all([loadProducts(true), loadEntryCustomers(true)]);
     const customersById = new Map(customers.map(customer => [customer.id, customer]));
     const unitKey = unit => ({ kg: '公斤', '千克': '公斤', g: '克' })[unit.toLowerCase()] || unit;
@@ -923,10 +950,14 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
       records.push({
         product_id: product.id, customer_id: customer?.id || null,
         customer_name: customer?.name || '', quantity: item.quantity,
-        unit_price: null, note: '', recorded_at: today()
+        unit_price: null, note: '', recorded_at: businessDate
       });
     }
     const payloads = saveIntents.records(inputId,records,{preserveDate:true});
+    if (dateField && payloads[0].recorded_at !== businessDate) {
+      throw new Error(`上次提交的日期是 ${payloads[0].recorded_at}，请选回该日期重试；保存成功后可到「记录」改日期`);
+    }
+    if (dateField) document.getElementById(dateField).dataset.chosen = 'true';
     persistWorkspace();
     await DB[opType](payloads);
     document.getElementById(inputId).value = '';
@@ -934,6 +965,7 @@ async function submitBatchPreviewCore(previewId, inputId, buttonId, opType) {
     document.getElementById(previewId).innerHTML = '';
     button.style.display = 'none';
     saveIntents.complete(inputId);
+    if (dateField) defaultReceiptDate(dateField, true);
     persistWorkspace();
     showToast(`保存成功，共 ${records.length} 条`, 'success');
     await renderDashboard();
@@ -1093,6 +1125,7 @@ function openRecordEditor(direction, record, products, customers) {
   document.getElementById('recordEditTitle').textContent = direction === 'inbound' ? '编辑入库记录' : '编辑出库记录';
   document.getElementById('recordEditOriginal').textContent =
     `${record.recorded_at} · ${oldCustomer || '无客户'} · ${oldProduct?.name || '未知商品'} ${formatNum(record.quantity)}${oldProduct?.unit || ''}`;
+  document.getElementById('recordEditDate').value = record.recorded_at;
   document.getElementById('recordEditCustomer').textContent = oldCustomer || '选择客户（可选）';
   document.getElementById('recordEditQuantity').value = record.quantity;
   document.getElementById('recordEditUnit').textContent = select.selectedOptions[0]?.dataset.unit || '';
@@ -1112,6 +1145,9 @@ function initRecordEditor() {
   const dialog = document.getElementById('recordEditDialog');
   const product = document.getElementById('recordEditProduct');
   const customerButton = document.getElementById('recordEditCustomer');
+  document.getElementById('recordEditYesterday').addEventListener('click', () => {
+    document.getElementById('recordEditDate').value = yesterday();
+  });
   product.addEventListener('change', () => {
     document.getElementById('recordEditUnit').textContent = product.selectedOptions[0]?.dataset.unit || '';
   });
@@ -1145,11 +1181,13 @@ async function saveEditedRecord() {
   const draft = recordEdit;
   if (!draft) return;
   const {record, direction} = draft;
+  const recordedAt = document.getElementById('recordEditDate').value;
   const productId = document.getElementById('recordEditProduct').value;
   const quantity = Number(document.getElementById('recordEditQuantity').value);
   const errorMessage = document.getElementById('recordEditError');
   errorMessage.hidden = true;
   try {
+    if (!recordedAt) throw new Error('请选择业务日期');
     if (!productId) throw new Error('请选择商品');
     if (!validDailyQuantity(quantity)) throw new Error('数量必须是大于 0 的整数');
     const products = await loadProducts(true);
@@ -1165,11 +1203,11 @@ async function saveEditedRecord() {
         customerName = customer.name;
       }
     }
-    const changed = productId !== record.product_id || quantity !== Number(record.quantity) ||
+    const changed = recordedAt !== record.recorded_at || productId !== record.product_id || quantity !== Number(record.quantity) ||
       draft.customerId !== (record.customer_id || null) || (customerName || '') !== (record.customer_name || '');
     if (changed) {
       await DB.updateLedgerRecord(direction, record, {
-        product_id: productId, customer_id: draft.customerId, customer_name: customerName, quantity
+        product_id: productId, customer_id: draft.customerId, customer_name: customerName, quantity, recorded_at: recordedAt
       });
       setState('stockCache', []);
     }
@@ -1755,7 +1793,29 @@ function restoreFormCustomer(select, previousId) {
 }
 
 
-function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function localDateValue(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function today() { return localDateValue(new Date()); }
+function yesterday() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return localDateValue(date);
+}
+
+function defaultReceiptDate(id, reset = false) {
+  const field = document.getElementById(id);
+  if (reset || (!field.dataset.chosen && (!field.value || field.value === field.dataset.defaultDay))) {
+    field.value = today();
+    field.dataset.defaultDay = field.value;
+    delete field.dataset.chosen;
+  }
+}
+
+function receiptDate(id) {
+  defaultReceiptDate(id);
+  const value = document.getElementById(id).value;
+  if (!isValidBusinessDate(value)) throw new Error('请选择有效的入库日期');
+  return value;
+}
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function formatNum(n) { if (n === null || n === undefined) return '0'; return Number(n) === Math.floor(n) ? String(Math.floor(n)) : String(Number(n).toFixed(2)); }
 function debounce(fn, d) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), d); }; }
@@ -1790,7 +1850,15 @@ async function saveDailyRecord(scope,method,record) {
     if (!customer) throw new Error('所选客户已不可用于录单，请重新选择客户');
     customerName = customer.name;
   }
-  const [payload]=saveIntents.records(scope,[{ ...record, customer_name: customerName }]);
+  const isReceipt = method === 'createInbound';
+  const [payload] = saveIntents.records(scope, [{ ...record, customer_name: customerName }], { preserveDate: isReceipt });
+  if (isReceipt && payload.recorded_at !== record.recorded_at) {
+    throw new Error(`上次提交的日期是 ${payload.recorded_at}，请选回该日期重试；保存成功后可到「记录」改日期`);
+  }
+  if (isReceipt) {
+    const dateField = scope === 'quickInModalOverlay' ? 'quickInDate' : 'inboundDate';
+    document.getElementById(dateField).dataset.chosen = 'true';
+  }
   const saved=await DB[method](payload);
   saveIntents.complete(scope);
   return saved;

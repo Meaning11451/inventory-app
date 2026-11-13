@@ -85,10 +85,10 @@ test('editing an old movement updates only its allowed fields and tolerates a lo
    const original={id:'r',product_id:'p1',customer_id:null,customer_name:'原客户（旧名）',quantity:10,note:null,created_at:'2026-11-01T12:00:00Z',recorded_at:'2026-10-25',unit_price:35};
    const originalOther={...original,id:'r2'};
    const table=tables[direction+'_records']=[{...original},{...originalOther}];
-   const desired={product_id:'p2',customer_id:'c2',customer_name:'乙',quantity:3};
+   const desired={product_id:'p2',customer_id:'c2',customer_name:'乙',quantity:3,recorded_at:'2026-10-24'};
    const expected={...original,...desired};
    calls.length=0;
-   const edited=await api.updateLedgerRecord(direction,original,{...desired,unit_price:0,recorded_at:'2026-11-13',id:'wrong'});
+   const edited=await api.updateLedgerRecord(direction,original,{...desired,unit_price:0,created_at:'2099-01-01T00:00:00Z',id:'wrong'});
    assert.deepEqual(edited,expected);
    assert.deepEqual(table,[expected,originalOther]);
    assert.equal(calls.length,1);
@@ -98,6 +98,28 @@ test('editing an old movement updates only its allowed fields and tolerates a lo
    calls.length=0;
    await api.updateLedgerRecord(direction,edited,desired);
    assert.equal(calls.length,0);
+ }
+});
+
+test('changing only the business day accepts leap day, rejects invalid calendar dates and protects concurrent edits',async()=>{
+ const fields={product_id:'p',customer_id:null,customer_name:'',quantity:2};
+ const original={id:'date-test',...fields,note:'',recorded_at:'2024-03-01',created_at:'2024-03-02T09:12:00Z'};
+ for(const direction of ['inbound','outbound']) {
+   const table=tables[direction+'_records']=[{...original}];
+   calls.length=0;
+   for(const invalid of ['',null,'2023-02-29','2024-04-31','0000-02-20','2/29/2024','2024-2-29','2024-02-29T00:00:00Z']){
+     await assert.rejects(api.updateLedgerRecord(direction,original,{...fields,recorded_at:invalid}),/日期/);
+   }
+   assert.equal(calls.length,0);
+   const edit={...fields,recorded_at:'2024-02-29'};
+   const target={...original,...edit};
+   assert.deepEqual(await api.updateLedgerRecord(direction,original,edit),target);
+   assert.deepEqual(await api.updateLedgerRecord(direction,original,edit),target);
+   assert.deepEqual(table,[target]);
+   await assert.rejects(api.updateLedgerRecord(direction,original,{...fields,quantity:4}),{code:'RECORD_CHANGED'});
+   await assert.rejects(api.updateLedgerRecord(direction,original,{...fields,recorded_at:'2024-02-28'}),{code:'RECORD_CHANGED'});
+   const updated=await api.updateLedgerRecord(direction,target,{...fields,quantity:3});
+   assert.deepEqual(updated,{...target,quantity:3});
  }
 });
 

@@ -27,7 +27,7 @@ async function records(t) {
   h.api.updateLedgerRecord = async (direction, original, patch) => {
     const rows = ledger[direction];
     const row = rows.find(r => r.id === original.id);
-    if (!row || ['product_id','customer_id','customer_name','quantity'].some(key => row[key] !== original[key])) {
+    if (!row || ['product_id','customer_id','customer_name','quantity','recorded_at'].some(key => row[key] !== original[key])) {
       throw Object.assign(new Error('这条记录已发生变化，请重新打开'), { code: 'RECORD_CHANGED' });
     }
     Object.assign(row, patch);
@@ -116,6 +116,66 @@ test('an old receipt can change product and remove the customer while other rece
   assert.deepEqual(h.outbound, sale);
   assert.deepEqual(await stock(h), [['a',-4],['b',42]]);
   assert.equal(h.byId('recordSummary').textContent,'入库 2 条，共 42件');
+});
+
+test('backdating a receipt or sale moves it to yesterday and updates daily totals without changing stock', async t => {
+  const h = await records(t);
+  const today = '2024-03-01', yesterday = '2024-02-29';
+  const BrowserDate = h.win.Date;
+  h.win.Date = class extends BrowserDate {
+    constructor(...args) { super(...(args.length ? args : [2024, 2, 1, 0, 5])); }
+  };
+  for (const row of [h.inbound[0], h.outbound[0]]) {
+    row.recorded_at = today;
+    row.created_at = today + 'T07:12:04.000Z';
+  }
+  const originalStock = await stock(h);
+  await h.win.renderDashboard();
+  assert.equal(h.byId('statTodayIn').textContent, '20件');
+  assert.equal(h.byId('statTodayOut').textContent, '4件');
+
+  for (const [direction, row] of [['inbound', h.inbound[0]], ['outbound', h.outbound[0]]]) {
+    const original = structuredClone(row);
+    h.byId('recordFromDate').value = today;
+    h.byId('recordToDate').value = today;
+    await open(h, direction, row.id);
+    assert.equal(h.byId('recordEditDate').value, today);
+    h.byId('recordEditYesterday').click();
+    assert.equal(h.byId('recordEditDate').value, yesterday);
+    await save(h);
+    assert.equal(h.byId('recordEditDialog').open, false);
+    assert.deepEqual(row, {...original, recorded_at: yesterday});
+    assert.equal(h.byId('recordFromDate').value, today);
+    assert.equal(h.byId('recordToDate').value, today);
+    assert.equal(h.byId('recordList').querySelector('.record-edit'), null);
+    h.byId('recordFromDate').value = '';
+    h.byId('recordToDate').value = '';
+    await h.win.renderRecords();
+    const headers = [...h.byId('recordList').querySelectorAll('.date-header')];
+    assert.ok(headers.some(header => header.textContent.startsWith(yesterday)));
+    assert.ok(h.byId('recordList').querySelector(`.record-edit[data-id="${row.id}"]`));
+    await h.win.renderDashboard();
+    assert.equal(h.byId('statTodayIn').textContent, '0件');
+    assert.equal(h.byId('statTodayOut').textContent, direction === 'inbound' ? '4件' : '0件');
+  }
+  assert.deepEqual(await stock(h), originalStock);
+});
+
+test('an empty date and a concurrent date change do not overwrite the saved business day', async t => {
+  const h = await records(t);
+  const original = structuredClone(h.outbound[0]);
+  await open(h, 'outbound', 'sale');
+  h.byId('recordEditDate').value = '';
+  await save(h);
+  assert.deepEqual(h.outbound, [original]);
+  assert.ok(h.byId('recordEditDialog').open);
+  assert.match(h.byId('recordEditError').textContent, /日期/);
+  h.byId('recordEditDate').value = '2024-03-06';
+  h.outbound[0].recorded_at = '2024-03-07';
+  await save(h);
+  assert.deepEqual(h.outbound, [{...original, recorded_at:'2024-03-07'}]);
+  assert.equal(h.byId('recordEditDialog').open, false);
+  assert.match(h.byId('recordList').textContent, /2024-03-07/);
 });
 
 test('cancelling, fractional quantities, a failed save, and a stale edit cannot change the ledger', async t => {
