@@ -260,6 +260,63 @@ export async function deleteOutboundRecord(id) {
   if (error) throw error;
 }
 
+function sameLedgerFields(row, target) {
+  return row.product_id === target.product_id &&
+    (row.customer_id ?? null) === target.customer_id &&
+    (row.customer_name ?? null) === target.customer_name &&
+    Number(row.quantity) === target.quantity;
+}
+
+export async function updateLedgerRecord(direction, original, changes) {
+  if (!['inbound', 'outbound'].includes(direction) || !original?.id || !original.product_id) {
+    throw new Error('无法确定要修改的进出库记录');
+  }
+  if (original.note === OPENING_NOTE || original.note?.startsWith('🔧')) {
+    throw new Error('期初库存和盘点调整请到库存页处理');
+  }
+  const { product_id, customer_id, quantity } = changes;
+  const customer_name = changes.customer_name ?? null;
+  if (typeof product_id !== 'string' || !product_id) throw new Error('请选择已有商品');
+  if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 9999999999) {
+    throw new Error('数量必须为大于 0 的整数，最多 10 位');
+  }
+  const keepOriginalCustomer = customer_id === (original.customer_id ?? null) &&
+    customer_name === (original.customer_name ?? null);
+  const validNewCustomer = (typeof customer_id === 'string' && customer_id.length > 0 &&
+    typeof customer_name === 'string' && customer_name.trim().length > 0) ||
+    (customer_id === null && customer_name === '');
+  if (!keepOriginalCustomer && !validNewCustomer) {
+    throw new Error('请重新选择已有客户');
+  }
+
+  const update = { product_id, customer_id, customer_name, quantity };
+  if (sameLedgerFields(original, update)) return original;
+  const table = `${direction}_records`;
+  let query = getClient().from(table).update(update).eq('id', original.id)
+    .eq('product_id', original.product_id).eq('quantity', original.quantity);
+  // Match both customer columns and the original note, including historical NULLs.
+  // A reclassification as an opening balance or stock adjustment then fails this update.
+  for (const field of ['customer_id', 'customer_name', 'note']) {
+    query = original[field] == null ? query.is(field, null) : query.eq(field, original[field]);
+  }
+  if (original.created_at) query = query.eq('created_at', original.created_at);
+  const { data, error } = await query.select('*');
+  if (error) throw error;
+  if (data?.length === 1) return data[0];
+
+  // If a previous response was lost, retrying the original edit may find it already applied.
+  const result = await getClient().from(table).select('*').eq('id', original.id);
+  if (result.error) throw result.error;
+  const current = result.data?.[0];
+  if (current && current.note === original.note &&
+      (!original.created_at || current.created_at === original.created_at) && sameLedgerFields(current, update)) {
+    return current;
+  }
+  const conflict = new Error(current ? '这条记录已在其他设备上修改，请重新打开核对' : '这条记录已删除，请刷新记录列表');
+  conflict.code = 'RECORD_CHANGED';
+  throw conflict;
+}
+
 // ==================== 实时订阅 ====================
 
 export function subscribeStockChanges(onUpdate) {

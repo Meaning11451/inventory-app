@@ -3,7 +3,7 @@
 // ============================================
 
 import state, { getState, setState } from './store.js';
-import * as DB from './supabase.js?v=24';
+import * as DB from './supabase.js?v=27';
 import { parseQuickEntry, resolveProducts, parseExcelData, findProduct, findCustomer, matchingProducts, matchingCustomers, suggestedCustomers, searchProducts } from './parser.js?v=26';
 import { initSync, getPendingCount } from './sync.js';
 import { initOpeningImport } from './opening-ui.js';
@@ -283,6 +283,7 @@ function bindEvents() {
   });
 
   // 记录筛选
+  initRecordEditor();
   document.getElementById('recordTypeFilter').addEventListener('change', renderRecords);
   document.getElementById('recordFromDate').addEventListener('change', renderRecords);
   document.getElementById('recordToDate').addEventListener('change', renderRecords);
@@ -1027,12 +1028,19 @@ async function renderRecords() {
                 <div style="font-weight:700;text-align:right;min-width:50px;${isIn?'color:var(--color-success)':'color:var(--color-danger)'}">
                   ${isIn?'+':'-'}${formatNum(r.quantity)} ${escapeHtml(unit)}
                 </div>
-                ${isOpeningRecord(r) ? '<span class="opening-record-tag">期初</span>' : `<button class="btn btn-sm btn-danger record-del" data-id="${r.id}" data-type="${type}" title="删除记录" style="opacity:0.4;font-size:0.7rem;padding:3px 6px;">✕</button>`}
+                ${isOpeningRecord(r) ? '<span class="opening-record-tag">期初</span>' : `<div class="record-actions">
+                  ${isStockAdjustment(r) ? '<span class="opening-record-tag">盘点</span>' : `<button type="button" class="btn btn-sm btn-outline record-edit" data-id="${escapeHtml(r.id)}" aria-label="编辑${escapeHtml(pn)}记录">编辑</button>`}
+                  <button type="button" class="btn btn-sm record-del" data-id="${escapeHtml(r.id)}" data-type="${type}" aria-label="删除${escapeHtml(pn)}记录" title="删除记录">✕</button>
+                </div>`}
               </div>
             </div>`;
         }).join('')}
       `).join('');
 
+    const recordsById = new Map(records.map(record => [record.id, record]));
+    for (const button of container.querySelectorAll('.record-edit')) {
+      button.addEventListener('click', () => openRecordEditor(type, recordsById.get(button.dataset.id), products, customers));
+    }
     // 删除记录按钮
     container.querySelectorAll('.record-del').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -1062,6 +1070,123 @@ async function renderRecords() {
     container.querySelector('.record-retry').addEventListener('click', renderRecords);
   } finally {
     if (version === recordRenderVersion) container.setAttribute('aria-busy', 'false');
+  }
+}
+
+// Edit the original movement. Stock is derived from movement rows.
+let recordEdit = null;
+
+function isStockAdjustment(record) {
+  return String(record.note || '').startsWith('🔧');
+}
+
+function openRecordEditor(direction, record, products, customers) {
+  if (!record || isOpeningRecord(record) || isStockAdjustment(record)) return;
+  const dialog = document.getElementById('recordEditDialog');
+  const select = document.getElementById('recordEditProduct');
+  recordEdit = { direction, record, products, customers, customerId: record.customer_id || null, customerChanged: false };
+  select.innerHTML = '<option value="">请选择商品</option>' + products.map(p =>
+    `<option value="${escapeHtml(p.id)}" data-unit="${escapeHtml(p.unit || '')}">${escapeHtml(p.name)}${p.spec ? ' · ' + escapeHtml(p.spec) : ''}</option>`).join('');
+  select.value = record.product_id;
+  const oldProduct = products.find(p => p.id === record.product_id) || record.products;
+  const oldCustomer = record.customer_name || customers.find(c => c.id === record.customer_id)?.name || '';
+  document.getElementById('recordEditTitle').textContent = direction === 'inbound' ? '编辑入库记录' : '编辑出库记录';
+  document.getElementById('recordEditOriginal').textContent =
+    `${record.recorded_at} · ${oldCustomer || '无客户'} · ${oldProduct?.name || '未知商品'} ${formatNum(record.quantity)}${oldProduct?.unit || ''}`;
+  document.getElementById('recordEditCustomer').textContent = oldCustomer || '选择客户（可选）';
+  document.getElementById('recordEditQuantity').value = record.quantity;
+  document.getElementById('recordEditUnit').textContent = select.selectedOptions[0]?.dataset.unit || '';
+  document.getElementById('recordEditError').hidden = true;
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+}
+
+function closeRecordEditor() {
+  const dialog = document.getElementById('recordEditDialog');
+  if (dialog.open && typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+  recordEdit = null;
+}
+
+function initRecordEditor() {
+  const dialog = document.getElementById('recordEditDialog');
+  const product = document.getElementById('recordEditProduct');
+  const customerButton = document.getElementById('recordEditCustomer');
+  product.addEventListener('change', () => {
+    document.getElementById('recordEditUnit').textContent = product.selectedOptions[0]?.dataset.unit || '';
+  });
+  customerButton.addEventListener('click', () => {
+    const draft = recordEdit;
+    if (!draft) return;
+    openCustomerPicker({
+      button: customerButton,
+      selectedId: draft.customerId,
+      canClear: Boolean(draft.customerId || (!draft.customerChanged && draft.record.customer_name)),
+      customers: draft.customers,
+      onChoose(customer) {
+        draft.customerId = customer?.id || null;
+        draft.customerChanged = true;
+        customerButton.textContent = customer?.name || '选择客户（可选）';
+      }
+    });
+  });
+  document.getElementById('recordEditCancel').addEventListener('click', closeRecordEditor);
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    if (!savingScopes.has('recordEditDialog')) closeRecordEditor();
+  });
+  document.getElementById('recordEditForm').addEventListener('submit', event => {
+    event.preventDefault();
+    withSaveLock('recordEditDialog', saveEditedRecord);
+  });
+}
+
+async function saveEditedRecord() {
+  const draft = recordEdit;
+  if (!draft) return;
+  const {record, direction} = draft;
+  const productId = document.getElementById('recordEditProduct').value;
+  const quantity = Number(document.getElementById('recordEditQuantity').value);
+  const errorMessage = document.getElementById('recordEditError');
+  errorMessage.hidden = true;
+  try {
+    if (!productId) throw new Error('请选择商品');
+    if (!validDailyQuantity(quantity)) throw new Error('数量必须是大于 0 的整数');
+    const products = await loadProducts(true);
+    if (!products.some(p => p.id === productId)) throw new Error('该商品已不可用，请重新打开记录选择商品');
+
+    let customerName = record.customer_name;
+    if (draft.customerChanged) {
+      customerName = '';
+      if (draft.customerId) {
+        draft.customers = await loadCustomers(true);
+        const customer = draft.customers.find(c => c.id === draft.customerId && isEntryCustomer(c));
+        if (!customer) throw new Error('该客户已不可用，请重新选择客户');
+        customerName = customer.name;
+      }
+    }
+    const changed = productId !== record.product_id || quantity !== Number(record.quantity) ||
+      draft.customerId !== (record.customer_id || null) || (customerName || '') !== (record.customer_name || '');
+    if (changed) {
+      await DB.updateLedgerRecord(direction, record, {
+        product_id: productId, customer_id: draft.customerId, customer_name: customerName, quantity
+      });
+      setState('stockCache', []);
+    }
+    closeRecordEditor();
+    if (changed) {
+      showToast('记录已更新', 'success');
+      await renderRecords();
+    }
+  } catch (error) {
+    if (error.code === 'RECORD_CHANGED') {
+      closeRecordEditor();
+      showToast('这条记录已被修改或删除，请查看最新记录后再编辑', 'warning');
+      await renderRecords();
+      return;
+    }
+    errorMessage.textContent = error.message || '保存失败，请重试';
+    errorMessage.hidden = false;
   }
 }
 
@@ -1351,24 +1476,36 @@ async function handleCustomerSaveCore() {
 
 // ==================== 解析预览 ====================
 
-let pickerRow = null;
+let customerPicker = null;
 let pickerLimit = 20;
 
 function closeEntryCustomerPicker() {
   const dialog = document.getElementById('entryCustomerPicker');
   if (dialog.open && typeof dialog.close === 'function') dialog.close();
   else dialog.removeAttribute('open');
-  const button = pickerRow?.querySelector('.ep-customer-picker');
-  pickerRow = null;
+  const button = customerPicker?.button;
+  customerPicker = null;
   if (button?.isConnected) button.focus({ preventScroll: true });
 }
 
 function openEntryCustomerPicker(row) {
-  pickerRow = row;
+  const raw = row.querySelector('.ep-customer').value.trim();
+  openCustomerPicker({
+    button: row.querySelector('.ep-customer-picker'),
+    get selectedId() { return row.querySelector('.ep-customer-choice').value; },
+    get canClear() { return Boolean(this.selectedId); },
+    original: row.dataset.originalCustomer || raw,
+    hint: raw,
+    onChoose: customer => applyPreviewCustomer(row, customer)
+  });
+}
+
+function openCustomerPicker(target) {
+  customerPicker = target;
   pickerLimit = 20;
   const search = document.getElementById('entryCustomerSearch');
   search.value = '';
-  const original = row.dataset.originalCustomer || row.querySelector('.ep-customer').value.trim();
+  const original = target.original;
   const caption = document.getElementById('entryCustomerOriginal');
   caption.textContent = original ? '原文 · ' + original : '';
   caption.hidden = !original;
@@ -1380,20 +1517,20 @@ function openEntryCustomerPicker(row) {
 }
 
 function renderEntryCustomerOptions() {
-  if (!pickerRow?.isConnected) {
-    if (pickerRow) closeEntryCustomerPicker();
+  if (!customerPicker?.button.isConnected) {
+    if (customerPicker) closeEntryCustomerPicker();
     return;
   }
   const search = document.getElementById('entryCustomerSearch').value.trim();
-  const catalog = (getState('customers') || []).filter(isEntryCustomer);
-  const selectedId = pickerRow.querySelector('.ep-customer-choice').value;
+  const catalog = (getState('customers') || customerPicker.customers || []).filter(isEntryCustomer);
+  const selectedId = customerPicker.selectedId;
   document.getElementById('entryCustomerClear').hidden = !search;
-  document.getElementById('entryCustomerUnset').hidden = !selectedId;
+  document.getElementById('entryCustomerUnset').hidden = !customerPicker.canClear;
   let results;
   if (search) {
     results = directoryResults(search, catalog);
   } else {
-    const recommended = suggestedCustomers(pickerRow.querySelector('.ep-customer').value, catalog).slice(0, 6);
+    const recommended = suggestedCustomers(customerPicker.hint || '', catalog).slice(0, 6);
     const first = new Set(recommended);
     results = [
       ...recommended.map(customer => ({ customer, detail: '推荐' })),
@@ -1415,8 +1552,11 @@ function renderEntryCustomerOptions() {
 }
 
 function chooseEntryCustomer(customer) {
-  if (!pickerRow?.isConnected) { closeEntryCustomerPicker(); return; }
-  const row = pickerRow;
+  if (customerPicker?.button.isConnected) customerPicker.onChoose(customer);
+  closeEntryCustomerPicker();
+}
+
+function applyPreviewCustomer(row, customer) {
   const raw = row.querySelector('.ep-customer').value.trim();
   if (!customer) row.querySelector('.ep-customer-choice').value = '';
   row.dataset.customerNeedsChoice = String(!customer && Boolean(raw));
@@ -1431,7 +1571,6 @@ function chooseEntryCustomer(customer) {
     }
   }
   persistWorkspace();
-  closeEntryCustomerPicker();
 }
 
 function initEntryCustomerPicker() {
@@ -1449,7 +1588,7 @@ function initEntryCustomerPicker() {
     const button = event.target.closest('button');
     if (!button) return;
     if (button.hasAttribute('data-more')) { pickerLimit += 20; renderEntryCustomerOptions(); return; }
-    const customer = (getState('customers') || []).find(c => c.id === button.dataset.customerId && isEntryCustomer(c));
+    const customer = (getState('customers') || customerPicker?.customers || []).find(c => c.id === button.dataset.customerId && isEntryCustomer(c));
     if (customer) chooseEntryCustomer(customer);
     else renderEntryCustomerOptions();
   });
@@ -1493,7 +1632,7 @@ function refreshPreviewCustomers(customers) {
       updateEntryPreviewRow(row);
     }
   }
-  if (pickerRow) renderEntryCustomerOptions();
+  if (customerPicker) renderEntryCustomerOptions();
   persistWorkspace();
 }
 

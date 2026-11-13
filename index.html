@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/app-icon-180.png?v=18">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png?v=14">
   <title>三胜达进销存</title>
-  <link rel="stylesheet" href="./css/style.css?v=26">
+  <link rel="stylesheet" href="./css/style.css?v=27">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -414,6 +414,30 @@
   </div>
 
   <!-- ========== 客户编辑弹窗 ========== -->
+  <dialog id="recordEditDialog" class="entry-customer-dialog record-edit-dialog" aria-labelledby="recordEditTitle">
+    <form id="recordEditForm" class="record-edit-form" novalidate>
+      <h3 id="recordEditTitle">编辑记录</h3>
+      <p id="recordEditOriginal" class="form-hint"></p>
+      <div class="form-group">
+        <label class="form-label" for="recordEditProduct">商品</label>
+        <select id="recordEditProduct" class="form-select" required></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="recordEditCustomer">客户</label>
+        <button type="button" id="recordEditCustomer" class="form-select" aria-haspopup="dialog" aria-controls="entryCustomerPicker">选择客户（可选）</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="recordEditQuantity">数量 <span id="recordEditUnit"></span></label>
+        <input id="recordEditQuantity" class="form-input" type="number" min="1" step="1" inputmode="numeric" required>
+      </div>
+      <p id="recordEditError" class="record-edit-error" role="alert" hidden></p>
+      <div class="modal-actions">
+        <button type="button" id="recordEditCancel" class="btn btn-outline">取消</button>
+        <button type="submit" id="recordEditSave" class="btn btn-primary">保存修改</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="entryCustomerPicker" class="entry-customer-dialog" aria-labelledby="entryCustomerTitle">
     <div class="entry-customer-panel">
       <div class="entry-customer-heading">
@@ -474,6 +498,6 @@
   <script src="./vendor/xlsx.full.min.js"></script>
 
   <!-- 应用 -->
-  <script type="module" src="./js/app.js?v=26"></script>
+  <script type="module" src="./js/app.js?v=27"></script>
 </body>
 </html>
